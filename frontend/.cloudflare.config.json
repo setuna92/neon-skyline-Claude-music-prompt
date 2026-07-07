@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "compatibilityDate": "2024-01-01",
+  "triggers": {
+    "crons": []
+  }
+}

@@ -1,0 +1,1131 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "description": "既存Flaskアプリ(app.py / src/prompt_generator.py)のプロンプト生成ロジックを標準化したテンプレ集。React/Vite版フロントエンドおよびClaude連携レイヤーの両方から参照する想定。",
+    "sourceOfTruth": "app.py の GENRES/MOODS/VOCAL_TYPES/INSTRUMENT_ELEMENTS/SONG_STRUCTURES/ATMOSPHERES と generate_english_prompt() / translate_to_japanese() を移植"
+  },
+  "genres": [
+    {
+      "key": "pop",
+      "label": "ポップ",
+      "en": "Pop"
+    },
+    {
+      "key": "jrock",
+      "label": "J-ロック",
+      "en": "J-Rock"
+    },
+    {
+      "key": "dark_synth",
+      "label": "ダーク・シンス",
+      "en": "Dark Synth"
+    },
+    {
+      "key": "edm",
+      "label": "EDM",
+      "en": "EDM"
+    },
+    {
+      "key": "lofi",
+      "label": "ローファイ",
+      "en": "Lo-Fi"
+    },
+    {
+      "key": "ambient",
+      "label": "アンビエント",
+      "en": "Ambient"
+    },
+    {
+      "key": "metal",
+      "label": "メタル",
+      "en": "Metal"
+    },
+    {
+      "key": "anime_op",
+      "label": "アニメOP",
+      "en": "Anime Opening"
+    },
+    {
+      "key": "techno",
+      "label": "テクノ",
+      "en": "Techno"
+    },
+    {
+      "key": "jazz",
+      "label": "ジャズ",
+      "en": "Jazz"
+    },
+    {
+      "key": "classical",
+      "label": "クラシカル",
+      "en": "Classical"
+    },
+    {
+      "key": "rock",
+      "label": "ロック",
+      "en": "Rock"
+    },
+    {
+      "key": "hip_hop",
+      "label": "ヒップホップ",
+      "en": "Hip-Hop"
+    },
+    {
+      "key": "electronic",
+      "label": "エレクトロニック",
+      "en": "Electronic"
+    },
+    {
+      "key": "folk",
+      "label": "フォーク",
+      "en": "Folk"
+    },
+    {
+      "key": "anime_op_rock",
+      "label": "アニメOPロック",
+      "en": "Anime OP Rock",
+      "extra": "The track should feel like a Japanese anime opening with dramatic build-ups, emotional melodies, and a powerful, uplifting chorus."
+    },
+    {
+      "key": "anime_ed",
+      "label": "アニメED",
+      "en": "Anime Ending",
+      "extra": "Inspired by Japanese anime ending themes with a bittersweet, reflective mood and melodic emotional phrasing."
+    },
+    {
+      "key": "post_rock",
+      "label": "ポストロック",
+      "en": "Post-Rock",
+      "extra": "Feature atmospheric guitar textures, gradual build-ups, and expansive cinematic dynamics typical of post-rock."
+    },
+    {
+      "key": "shoegaze",
+      "label": "シューゲイザー",
+      "en": "Shoegaze",
+      "extra": "Use washed-out guitars, heavy reverb, and hazy vocal textures to create a dreamy shoegaze sound."
+    },
+    {
+      "key": "emo_rock",
+      "label": "エモロック",
+      "en": "Emo Rock",
+      "extra": "Emphasize emotional vocal delivery, expressive guitar lines, and heartfelt, introspective melodies."
+    },
+    {
+      "key": "pop_punk",
+      "label": "ポップパンク",
+      "en": "Pop Punk",
+      "extra": "Combine fast energetic drums, punchy guitars, and catchy vocal hooks in a pop-punk style."
+    },
+    {
+      "key": "metalcore",
+      "label": "メタルコア",
+      "en": "Metalcore",
+      "extra": "Blend heavy guitar riffs, breakdowns, and a mix of screamed and clean vocals in a metalcore style."
+    },
+    {
+      "key": "future_bass",
+      "label": "フューチャーベース",
+      "en": "Future Bass",
+      "extra": "Use bright synth chords, side-chained pads, and emotional drops characteristic of future bass."
+    },
+    {
+      "key": "drum_and_bass",
+      "label": "ドラムンベース",
+      "en": "Drum and Bass",
+      "extra": "Feature fast breakbeats, deep basslines, and high-energy rhythmic patterns."
+    },
+    {
+      "key": "trance",
+      "label": "トランス",
+      "en": "Trance",
+      "extra": "Build hypnotic arpeggios, long build-ups, and euphoric drops in a trance style."
+    },
+    {
+      "key": "synthwave",
+      "label": "シンセウェイブ",
+      "en": "Synthwave",
+      "extra": "Create a retro-futuristic synthwave sound with analog-style synths and nostalgic melodies."
+    },
+    {
+      "key": "cyberpunk",
+      "label": "サイバーパンク",
+      "en": "Cyberpunk",
+      "extra": "Use dark electronic textures, distorted synths, and industrial-inspired rhythms for a cyberpunk feel."
+    },
+    {
+      "key": "dark_pop",
+      "label": "ダークポップ",
+      "en": "Dark Pop",
+      "extra": "Blend catchy pop melodies with dark moody harmonies and atmospheric production."
+    },
+    {
+      "key": "hyperpop",
+      "label": "ハイパーポップ",
+      "en": "Hyperpop",
+      "extra": "Incorporate glitchy sound design, pitch-shifted vocals, and exaggerated high-energy pop elements."
+    },
+    {
+      "key": "city_pop",
+      "label": "シティポップ",
+      "en": "City Pop",
+      "extra": "Inspired by Japanese city pop with smooth grooves, jazzy chords, and nostalgic night-time vibes."
+    },
+    {
+      "key": "lofi_hiphop",
+      "label": "ローファイ・ヒップホップ",
+      "en": "Lo-Fi Hip-Hop",
+      "extra": "Use laid-back drum grooves, warm sampled textures, and mellow chords for a lofi hip-hop feel."
+    },
+    {
+      "key": "orchestral_epic",
+      "label": "エピックオーケストラ",
+      "en": "Epic Orchestral",
+      "extra": "Create an epic orchestral sound with powerful strings, brass, and percussion."
+    },
+    {
+      "key": "piano_ballad",
+      "label": "ピアノバラード",
+      "en": "Piano Ballad",
+      "extra": "Center the track around an emotional piano performance with expressive dynamics."
+    },
+    {
+      "key": "ambient_drone",
+      "label": "アンビエント・ドローン",
+      "en": "Ambient Drone",
+      "extra": "Focus on long evolving textures, minimal rhythm, and immersive ambient drones."
+    },
+    {
+      "key": "industrial",
+      "label": "インダストリアル",
+      "en": "Industrial",
+      "extra": "Use mechanical distorted sounds, heavy percussion, and harsh textures."
+    },
+    {
+      "key": "idol_pop",
+      "label": "アイドルポップ",
+      "en": "Idol Pop",
+      "extra": "Emphasize bright catchy melodies, upbeat rhythms, and polished idol-style production."
+    },
+    {
+      "key": "vocaloid_pop",
+      "label": "ボカロポップ",
+      "en": "Vocaloid Pop",
+      "extra": "Designed for a synthetic vocal style with fast melodic lines and electronic pop backing."
+    },
+    {
+      "key": "rock_ballad",
+      "label": "ロックバラード",
+      "en": "Rock Ballad",
+      "extra": "Combine emotional vocals and expressive guitar leads in a gradually intensifying rock ballad."
+    },
+    {
+      "key": "progressive_rock",
+      "label": "プログレッシブロック",
+      "en": "Progressive Rock",
+      "extra": "Use complex song structures and intricate instrumental parts typical of progressive rock."
+    },
+    {
+      "key": "progressive_metal",
+      "label": "プログレメタル",
+      "en": "Progressive Metal",
+      "extra": "Blend heavy riffs, odd time signatures, and technical playing in a progressive metal style."
+    },
+    {
+      "key": "chillstep",
+      "label": "チルステップ",
+      "en": "Chillstep",
+      "extra": "Combine soft atmospheric pads with gentle dubstep-inspired rhythms."
+    },
+    {
+      "key": "future_funk",
+      "label": "フューチャーファンク",
+      "en": "Future Funk",
+      "extra": "Use funky basslines, chopped samples, and upbeat grooves inspired by future funk."
+    },
+    {
+      "key": "kawaii_bass",
+      "label": "カワイイベース",
+      "en": "Kawaii Bass",
+      "extra": "Incorporate cute high-pitched synths, playful melodies, and energetic basslines."
+    },
+    {
+      "key": "cinematic_electronic",
+      "label": "シネマティックエレクトロ",
+      "en": "Cinematic Electronic",
+      "extra": "Blend cinematic sound design with electronic rhythms and evolving textures."
+    },
+    {
+      "key": "emotional_edm",
+      "label": "エモEDM",
+      "en": "Emotional EDM",
+      "extra": "Combine emotional chord progressions, melodic leads, and impactful drops."
+    },
+    {
+      "key": "synth_rock",
+      "label": "シンセロック",
+      "en": "Synth Rock",
+      "extra": "Blend driving rock guitars with prominent analog-style synth lines."
+    },
+    {
+      "key": "cyber_trance",
+      "label": "サイバートランス",
+      "en": "Cyber Trance",
+      "extra": "Combine hypnotic trance arpeggios with cyberpunk-inspired dark electronic textures."
+    },
+    {
+      "key": "electronic_rock",
+      "label": "エレクトロニックロック",
+      "en": "Electronic Rock",
+      "extra": "Fuse distorted rock instrumentation with electronic beats and synth textures."
+    },
+    {
+      "key": "symphonic_rock",
+      "label": "シンフォニックロック",
+      "en": "Symphonic Rock",
+      "extra": "Combine full orchestral arrangements with powerful rock band instrumentation."
+    },
+    {
+      "key": "melodic_metal_rock",
+      "label": "メロディックメタル寄りロック",
+      "en": "Melodic Metal-leaning Rock",
+      "extra": "Blend melodic, soaring vocal lines with metal-leaning guitar riffs and double-kick drums."
+    },
+    {
+      "key": "synthpop_rock",
+      "label": "シンセポップ×ロック",
+      "en": "Synthpop x Rock",
+      "extra": "Combine bright synthpop hooks with live rock band energy."
+    },
+    {
+      "key": "emotional_rock",
+      "label": "エモーショナルロック",
+      "en": "Emotional Rock",
+      "extra": "Emphasize heartfelt vocal delivery and dynamic builds that swell into cathartic choruses."
+    },
+    {
+      "key": "dance_rock",
+      "label": "ダンスロック",
+      "en": "Dance Rock",
+      "extra": "Combine four-on-the-floor dance grooves with energetic rock guitars and hooks."
+    },
+    {
+      "key": "future_jrock",
+      "label": "未来派J-Rock",
+      "en": "Futuristic J-Rock",
+      "extra": "Blend J-Rock songwriting with futuristic synth textures and glitch-inspired production."
+    },
+    {
+      "key": "emo_electronic_rock_x_drumnbass",
+      "label": "Emo Electronic Rock × Drum'n'Bass",
+      "en": "Emo Electronic Rock × Drum'n'Bass"
+    },
+    {
+      "key": "emo_electronic_rock_x_cyber_trance",
+      "label": "Emo Electronic Rock × Cyber Trance",
+      "en": "Emo Electronic Rock × Cyber Trance"
+    },
+    {
+      "key": "emo_electronic_rock_x_future_bass",
+      "label": "Emo Electronic Rock × Future Bass",
+      "en": "Emo Electronic Rock × Future Bass"
+    },
+    {
+      "key": "emo_electronic_rock_x_hardwave",
+      "label": "Emo Electronic Rock × Hardwave",
+      "en": "Emo Electronic Rock × Hardwave"
+    },
+    {
+      "key": "emo_electronic_rock_x_melodic_dubstep",
+      "label": "Emo Electronic Rock × Melodic Dubstep",
+      "en": "Emo Electronic Rock × Melodic Dubstep"
+    },
+    {
+      "key": "emo_electronic_rock_x_breakcore_控えめ",
+      "label": "Emo Electronic Rock × Breakcore（控えめ）",
+      "en": "Emo Electronic Rock × Breakcore（控えめ）"
+    },
+    {
+      "key": "emo_electronic_rock_x_synthwave_高速",
+      "label": "Emo Electronic Rock × Synthwave（高速）",
+      "en": "Emo Electronic Rock × Synthwave（高速）"
+    },
+    {
+      "key": "emo_electronic_rock_x_trancecore",
+      "label": "Emo Electronic Rock × Trancecore",
+      "en": "Emo Electronic Rock × Trancecore"
+    },
+    {
+      "key": "emo_electronic_rock_x_hyperpop_エモ寄り",
+      "label": "Emo Electronic Rock × Hyperpop（エモ寄り）",
+      "en": "Emo Electronic Rock × Hyperpop（エモ寄り）"
+    },
+    {
+      "key": "emo_electronic_rock_x_digital_hardcore_エモ強化",
+      "label": "Emo Electronic Rock × Digital Hardcore（エモ強化）",
+      "en": "Emo Electronic Rock × Digital Hardcore（エモ強化）"
+    },
+    {
+      "key": "cyberpunk_rock_x_future_bass",
+      "label": "Cyberpunk Rock × Future Bass",
+      "en": "Cyberpunk Rock × Future Bass"
+    },
+    {
+      "key": "cyberpunk_rock_x_drumnbass",
+      "label": "Cyberpunk Rock × Drum'n'Bass",
+      "en": "Cyberpunk Rock × Drum'n'Bass"
+    },
+    {
+      "key": "cyberpunk_rock_x_hardstyle_サイバー寄せ",
+      "label": "Cyberpunk Rock × Hardstyle（サイバー寄せ）",
+      "en": "Cyberpunk Rock × Hardstyle（サイバー寄せ）"
+    },
+    {
+      "key": "cyberpunk_rock_x_trancecore",
+      "label": "Cyberpunk Rock × Trancecore",
+      "en": "Cyberpunk Rock × Trancecore"
+    },
+    {
+      "key": "cyberpunk_rock_x_electro_house_暗め",
+      "label": "Cyberpunk Rock × Electro House（暗め）",
+      "en": "Cyberpunk Rock × Electro House（暗め）"
+    },
+    {
+      "key": "cyberpunk_rock_x_synthwave_ダーク",
+      "label": "Cyberpunk Rock × Synthwave（ダーク）",
+      "en": "Cyberpunk Rock × Synthwave（ダーク）"
+    },
+    {
+      "key": "cyberpunk_rock_x_industrial_rock",
+      "label": "Cyberpunk Rock × Industrial Rock",
+      "en": "Cyberpunk Rock × Industrial Rock"
+    },
+    {
+      "key": "cyberpunk_rock_x_digital_hardcore",
+      "label": "Cyberpunk Rock × Digital Hardcore",
+      "en": "Cyberpunk Rock × Digital Hardcore"
+    },
+    {
+      "key": "cyberpunk_rock_x_hardwave",
+      "label": "Cyberpunk Rock × Hardwave",
+      "en": "Cyberpunk Rock × Hardwave"
+    },
+    {
+      "key": "cyberpunk_rock_x_techno_高速",
+      "label": "Cyberpunk Rock × Techno（高速）",
+      "en": "Cyberpunk Rock × Techno（高速）"
+    },
+    {
+      "key": "digital_hardcore_x_kawaii_bass",
+      "label": "Digital Hardcore × Kawaii Bass",
+      "en": "Digital Hardcore × Kawaii Bass"
+    },
+    {
+      "key": "digital_hardcore_x_future_bass_攻撃的",
+      "label": "Digital Hardcore × Future Bass（攻撃的）",
+      "en": "Digital Hardcore × Future Bass（攻撃的）"
+    },
+    {
+      "key": "digital_hardcore_x_drumnbass_カオス高速",
+      "label": "Digital Hardcore × Drum'n'Bass（カオス高速）",
+      "en": "Digital Hardcore × Drum'n'Bass（カオス高速）"
+    },
+    {
+      "key": "digital_hardcore_x_breakcore_制御された暴走",
+      "label": "Digital Hardcore × Breakcore（制御された暴走）",
+      "en": "Digital Hardcore × Breakcore（制御された暴走）"
+    },
+    {
+      "key": "digital_hardcore_x_hyperpop_破壊x可愛い",
+      "label": "Digital Hardcore × Hyperpop（破壊×可愛い）",
+      "en": "Digital Hardcore × Hyperpop（破壊×可愛い）"
+    },
+    {
+      "key": "digital_hardcore_x_electro_rock",
+      "label": "Digital Hardcore × Electro Rock",
+      "en": "Digital Hardcore × Electro Rock"
+    },
+    {
+      "key": "digital_hardcore_x_cyber_trance",
+      "label": "Digital Hardcore × Cyber Trance",
+      "en": "Digital Hardcore × Cyber Trance"
+    },
+    {
+      "key": "digital_hardcore_x_hardwave",
+      "label": "Digital Hardcore × Hardwave",
+      "en": "Digital Hardcore × Hardwave"
+    },
+    {
+      "key": "digital_hardcore_x_trancecore_暴走トランス",
+      "label": "Digital Hardcore × Trancecore（暴走トランス）",
+      "en": "Digital Hardcore × Trancecore（暴走トランス）"
+    },
+    {
+      "key": "digital_hardcore_x_synthpunk",
+      "label": "Digital Hardcore × Synthpunk",
+      "en": "Digital Hardcore × Synthpunk"
+    },
+    {
+      "key": "kawaii_bass_x_future_bass_王道",
+      "label": "Kawaii Bass × Future Bass（王道）",
+      "en": "Kawaii Bass × Future Bass（王道）"
+    },
+    {
+      "key": "kawaii_bass_x_drumnbass_高速かわいい",
+      "label": "Kawaii Bass × Drum'n'Bass（高速かわいい）",
+      "en": "Kawaii Bass × Drum'n'Bass（高速かわいい）"
+    },
+    {
+      "key": "kawaii_bass_x_cyber_trance_ネオンx可愛い",
+      "label": "Kawaii Bass × Cyber Trance（ネオン×可愛い）",
+      "en": "Kawaii Bass × Cyber Trance（ネオン×可愛い）"
+    },
+    {
+      "key": "kawaii_bass_x_hyperpop_高速ポップ",
+      "label": "Kawaii Bass × Hyperpop（高速ポップ）",
+      "en": "Kawaii Bass × Hyperpop（高速ポップ）"
+    },
+    {
+      "key": "kawaii_bass_x_emo_electronic_rock_泣ける可愛い",
+      "label": "Kawaii Bass × Emo Electronic Rock（泣ける可愛い）",
+      "en": "Kawaii Bass × Emo Electronic Rock（泣ける可愛い）"
+    },
+    {
+      "key": "kawaii_bass_x_digital_hardcore_破壊x可愛い",
+      "label": "Kawaii Bass × Digital Hardcore（破壊×可愛い）",
+      "en": "Kawaii Bass × Digital Hardcore（破壊×可愛い）"
+    },
+    {
+      "key": "kawaii_bass_x_hardwave_幻想x可愛い",
+      "label": "Kawaii Bass × Hardwave（幻想×可愛い）",
+      "en": "Kawaii Bass × Hardwave（幻想×可愛い）"
+    },
+    {
+      "key": "future_bass_x_emo_electronic_rock",
+      "label": "Future Bass × Emo Electronic Rock",
+      "en": "Future Bass × Emo Electronic Rock"
+    },
+    {
+      "key": "future_bass_x_cyberpunk_rock",
+      "label": "Future Bass × Cyberpunk Rock",
+      "en": "Future Bass × Cyberpunk Rock"
+    },
+    {
+      "key": "future_bass_x_digital_hardcore",
+      "label": "Future Bass × Digital Hardcore",
+      "en": "Future Bass × Digital Hardcore"
+    },
+    {
+      "key": "future_bass_x_drumnbass_fb高速化",
+      "label": "Future Bass × Drum'n'Bass（FB高速化）",
+      "en": "Future Bass × Drum'n'Bass（FB高速化）"
+    },
+    {
+      "key": "future_bass_x_trancecore",
+      "label": "Future Bass × Trancecore",
+      "en": "Future Bass × Trancecore"
+    },
+    {
+      "key": "future_bass_x_hardwave_幻想系",
+      "label": "Future Bass × Hardwave（幻想系）",
+      "en": "Future Bass × Hardwave（幻想系）"
+    },
+    {
+      "key": "future_bass_x_hyperpop_高速キラキラ",
+      "label": "Future Bass × Hyperpop（高速キラキラ）",
+      "en": "Future Bass × Hyperpop（高速キラキラ）"
+    },
+    {
+      "key": "drumnbass_x_emo_electronic_rock",
+      "label": "Drum'n'Bass × Emo Electronic Rock",
+      "en": "Drum'n'Bass × Emo Electronic Rock"
+    },
+    {
+      "key": "drumnbass_x_cyberpunk_rock",
+      "label": "Drum'n'Bass × Cyberpunk Rock",
+      "en": "Drum'n'Bass × Cyberpunk Rock"
+    },
+    {
+      "key": "drumnbass_x_digital_hardcore",
+      "label": "Drum'n'Bass × Digital Hardcore",
+      "en": "Drum'n'Bass × Digital Hardcore"
+    },
+    {
+      "key": "drumnbass_x_kawaii_bass",
+      "label": "Drum'n'Bass × Kawaii Bass",
+      "en": "Drum'n'Bass × Kawaii Bass"
+    },
+    {
+      "key": "drumnbass_x_future_bass_メロディ強化",
+      "label": "Drum'n'Bass × Future Bass（メロディ強化）",
+      "en": "Drum'n'Bass × Future Bass（メロディ強化）"
+    },
+    {
+      "key": "drumnbass_x_hardwave",
+      "label": "Drum'n'Bass × Hardwave",
+      "en": "Drum'n'Bass × Hardwave"
+    },
+    {
+      "key": "drumnbass_x_trancecore_高速トランス",
+      "label": "Drum'n'Bass × Trancecore（高速トランス）",
+      "en": "Drum'n'Bass × Trancecore（高速トランス）"
+    }
+  ],
+  "moods": [
+    {
+      "key": "late_night_drive",
+      "label": "深夜ドライブ",
+      "en": "a late-night driving atmosphere",
+      "jp": "深夜ドライブのような没入感のある雰囲気を持たせます。"
+    },
+    {
+      "key": "after_work",
+      "label": "仕事終わり",
+      "en": "a relaxing end-of-day mood",
+      "jp": "仕事終わりのリラックスした雰囲気を持たせます。"
+    },
+    {
+      "key": "focus",
+      "label": "集中したい時",
+      "en": "a focused and concentrated feeling",
+      "jp": "集中力を高める落ち着いた雰囲気を持たせます。"
+    },
+    {
+      "key": "rainy_day",
+      "label": "雨の日",
+      "en": "a rainy-day emotional tone",
+      "jp": "雨の日のような情緒的な雰囲気を持たせます。"
+    },
+    {
+      "key": "hype_up",
+      "label": "テンション上げたい時",
+      "en": "a high-energy boost",
+      "jp": "テンションを一気に引き上げる高エネルギー感を持たせます。"
+    },
+    {
+      "key": "emotional",
+      "label": "感情的になりたい時",
+      "en": "deep emotional expression",
+      "jp": "深い感情表現を重視します。"
+    },
+    {
+      "key": "study",
+      "label": "勉強中",
+      "en": "a calm study-friendly ambience",
+      "jp": "勉強に適した落ち着いた雰囲気を持たせます。"
+    },
+    {
+      "key": "workout",
+      "label": "運動中",
+      "en": "an energetic workout vibe",
+      "jp": "運動に適したエネルギッシュな雰囲気を持たせます。"
+    },
+    {
+      "key": "chill",
+      "label": "ゆったり",
+      "en": "a chill and relaxed mood",
+      "jp": "ゆったりとリラックスした雰囲気を持たせます。"
+    },
+    {
+      "key": "romantic",
+      "label": "ロマンティック",
+      "en": "a romantic atmosphere",
+      "jp": "ロマンティックな雰囲気を持たせます。"
+    },
+    {
+      "key": "party",
+      "label": "パーティー",
+      "en": "a lively party energy",
+      "jp": "パーティーのような賑やかなエネルギーを持たせます。"
+    },
+    {
+      "key": "reflection",
+      "label": "内省的",
+      "en": "an introspective emotional tone",
+      "jp": "内省的で感情的なトーンを持たせます。"
+    },
+    {
+      "key": "upliftment_rush",
+      "label": "高揚／疾走感",
+      "en": "an uplifting, rushing sense of momentum",
+      "jp": "疾走感と高揚感のある雰囲気を持たせます。"
+    },
+    {
+      "key": "bittersweet_hope",
+      "label": "切なさと希望の混在",
+      "en": "a bittersweet mix of longing and hope",
+      "jp": "切なさと希望が入り混じる感情を持たせます。"
+    },
+    {
+      "key": "pre_battle_tension",
+      "label": "緊迫感／戦闘前の昂り",
+      "en": "a tense, battle-ready anticipation",
+      "jp": "戦闘前のような緊迫した高揚感を持たせます。"
+    },
+    {
+      "key": "nostalgic_intensity",
+      "label": "ノスタルジックな熱量",
+      "en": "a nostalgic, burning intensity",
+      "jp": "ノスタルジックで熱を帯びた雰囲気を持たせます。"
+    },
+    {
+      "key": "cool_cold_glow",
+      "label": "クールで冷たい輝き",
+      "en": "a cool, cold-edged brilliance",
+      "jp": "クールで冷たい輝きのある雰囲気を持たせます。"
+    },
+    {
+      "key": "epic_solemn",
+      "label": "エピックで荘厳",
+      "en": "an epic, solemn grandeur",
+      "jp": "エピックで荘厳な雰囲気を持たせます。"
+    },
+    {
+      "key": "cyber_unease",
+      "label": "サイバーな不穏さ",
+      "en": "a cyber-tinged sense of unease",
+      "jp": "サイバーで不穏な雰囲気を持たせます。"
+    },
+    {
+      "key": "youth_explosion",
+      "label": "青春の爆発",
+      "en": "an explosive burst of youthful energy",
+      "jp": "青春が爆発するような熱量を持たせます。"
+    },
+    {
+      "key": "fragility_resolve",
+      "label": "儚さと決意",
+      "en": "a fragile beauty paired with resolve",
+      "jp": "儚さと決意が同居する雰囲気を持たせます。"
+    },
+    {
+      "key": "racing_liberation",
+      "label": "疾走する解放感",
+      "en": "a racing sense of liberation",
+      "jp": "疾走感のある解放的な雰囲気を持たせます。"
+    }
+  ],
+  "vocalTypes": [
+    {
+      "key": "no_vocal",
+      "label": "ボーカルなし",
+      "en": "no vocals"
+    },
+    {
+      "key": "female",
+      "label": "女性ボーカル",
+      "en": "female vocals",
+      "jp": "女性ボーカルを表情豊かに配置してください。"
+    },
+    {
+      "key": "male",
+      "label": "男性ボーカル",
+      "en": "male vocals",
+      "jp": "男性ボーカルを力強く配置してください。"
+    },
+    {
+      "key": "robotic",
+      "label": "ロボ声",
+      "en": "robotic voice",
+      "jp": "ロボットボイスを特徴的に使用してください。"
+    },
+    {
+      "key": "chorus_thick",
+      "label": "コーラス厚め",
+      "en": "thick layered chorus",
+      "jp": "厚みのあるレイヤードコーラスを加えてください。"
+    },
+    {
+      "key": "male_solo_powerful_shout",
+      "label": "力強いソロ男性（中高域シャウト混）",
+      "en": "a powerful male solo voice with mid-to-high register shouts",
+      "jp": "力強い男性ソロボーカルに、中高域のシャウトを混ぜて配置してください。"
+    },
+    {
+      "key": "female_solo_emotional_falsetto",
+      "label": "エモーショナルなソロ女性（クリア〜ファルセット）",
+      "en": "an emotional female solo voice ranging from clear tone to falsetto",
+      "jp": "クリアな声からファルセットまで使う、エモーショナルな女性ソロボーカルを配置してください。"
+    },
+    {
+      "key": "duet_call_response_chorus",
+      "label": "男女デュエット（掛け合いサビ）",
+      "en": "a male-female duet trading lines through the chorus",
+      "jp": "サビで男女が掛け合うデュエットボーカルを配置してください。"
+    },
+    {
+      "key": "rap_spit_bridge",
+      "label": "ラップ／スピット（ブリッジで挿入）",
+      "en": "a rapped/spit verse inserted at the bridge",
+      "jp": "ブリッジ部分にラップ（スピット）を挿入してください。"
+    },
+    {
+      "key": "autotune_futuristic",
+      "label": "オートチューンで未来感演出",
+      "en": "auto-tuned vocals for a futuristic effect",
+      "jp": "オートチューンを用いて未来感のあるボーカルを演出してください。"
+    },
+    {
+      "key": "whisper_to_explosion",
+      "label": "囁き→爆発のダイナミクス",
+      "en": "vocals dynamically building from a whisper to an explosive delivery",
+      "jp": "囁くような声から爆発的な歌唱へと展開するダイナミクスを付けてください。"
+    },
+    {
+      "key": "choir_climax",
+      "label": "合唱風クワイア（サビの盛り上げ）",
+      "en": "a choir-like ensemble lifting the chorus",
+      "jp": "サビを盛り上げる合唱風のクワイアを配置してください。"
+    },
+    {
+      "key": "spoken_intro",
+      "label": "語り（イントロの導入）",
+      "en": "a spoken-word introduction",
+      "jp": "イントロに語り（セリフ）を導入として入れてください。"
+    },
+    {
+      "key": "vocal_chop_fx",
+      "label": "ボーカルサンプルチョップ（エフェクト）",
+      "en": "chopped vocal samples used as an effect",
+      "jp": "ボーカルサンプルをチョップしたエフェクトを取り入れてください。"
+    }
+  ],
+  "instrumentElements": [
+    {
+      "key": "synth",
+      "label": "シンセ",
+      "en": "synth"
+    },
+    {
+      "key": "guitar",
+      "label": "ギター",
+      "en": "guitar"
+    },
+    {
+      "key": "808",
+      "label": "808",
+      "en": "808"
+    },
+    {
+      "key": "piano",
+      "label": "ピアノ",
+      "en": "piano"
+    },
+    {
+      "key": "strings",
+      "label": "ストリングス",
+      "en": "strings"
+    },
+    {
+      "key": "drums",
+      "label": "ドラムス",
+      "en": "drums"
+    },
+    {
+      "key": "bass",
+      "label": "ベース",
+      "en": "bass"
+    },
+    {
+      "key": "pad",
+      "label": "パッド",
+      "en": "pad"
+    },
+    {
+      "key": "distorted_guitar_riff",
+      "label": "歪んだエレキギター（リフ主体）",
+      "en": "riff-driven distorted electric guitar"
+    },
+    {
+      "key": "clean_arpeggio",
+      "label": "クリーンアルペジオ（空間作り）",
+      "en": "clean arpeggios creating spacious texture"
+    },
+    {
+      "key": "thick_synth_pad",
+      "label": "厚いシンセパッド（広がり）",
+      "en": "thick, wide synth pads"
+    },
+    {
+      "key": "sharp_synth_lead",
+      "label": "鋭いシンセリード（メロディ）",
+      "en": "a sharp synth lead carrying the melody"
+    },
+    {
+      "key": "sidechain_trance_kick",
+      "label": "サイドチェイン・トランスキック",
+      "en": "a sidechained trance kick"
+    },
+    {
+      "key": "programmed_live_drum_layer",
+      "label": "プログラミングドラム＋生ドラムレイヤー",
+      "en": "programmed drums layered with live drums"
+    },
+    {
+      "key": "synth_bass_sub_heavy",
+      "label": "シンセベース（サブベース強め）",
+      "en": "synth bass with heavy sub-bass"
+    },
+    {
+      "key": "orchestral_strings_swell",
+      "label": "ストリングス（オーケストラ的盛り上げ）",
+      "en": "orchestral strings swelling for impact"
+    },
+    {
+      "key": "brass_horn_accent",
+      "label": "ブラス／ホーン（短いアクセント）",
+      "en": "brass/horn hits for short accents"
+    },
+    {
+      "key": "glitch_bitcrush_fx",
+      "label": "グリッチ／ビットクラッシュFX",
+      "en": "glitch and bitcrush FX"
+    }
+  ],
+  "songStructures": [
+    {
+      "key": "verse_chorus",
+      "label": "A→B→サビ",
+      "en": "a verse–chorus–bridge structure",
+      "jp": "構成は Aメロ → Bメロ → サビ（ブリッジ含む）で進行させます。"
+    },
+    {
+      "key": "drop",
+      "label": "ドロップ",
+      "en": "a heavy drop-focused structure",
+      "jp": "ドロップを中心とした構成で展開してください。"
+    },
+    {
+      "key": "break",
+      "label": "ブレイク",
+      "en": "a breakbeat-style progression",
+      "jp": "ブレイクビート的な展開で進行させます。"
+    },
+    {
+      "key": "build_up",
+      "label": "ビルドアップ",
+      "en": "a build-up driven arrangement",
+      "jp": "ビルドアップ主体の構成で展開してください。"
+    },
+    {
+      "key": "loop",
+      "label": "ループ",
+      "en": "a looping minimal structure",
+      "jp": "ループを中心としたミニマルな構成にします。"
+    },
+    {
+      "key": "full_anime_op_structure",
+      "label": "イントロ（シンセ→ギター）→A→B→サビ→B→サビ→ブリッジ→最終サビ→アウトロ",
+      "en": "a full structure: synth-to-guitar intro, verse, pre-chorus, chorus, verse, pre-chorus, chorus, bridge, final chorus, and outro",
+      "jp": "イントロ（シンセ→ギター）→Aメロ→Bメロ→サビ→Bメロ→サビ→ブリッジ→最終サビ→アウトロという構成で進行させます。"
+    },
+    {
+      "key": "build_drop_chorus",
+      "label": "ビルド→ドロップ（サビがドロップ的）→展開",
+      "en": "a build-up into a drop-like chorus, followed by further development",
+      "jp": "ビルドアップからドロップ的なサビへ展開し、さらに発展させる構成にします。"
+    },
+    {
+      "key": "double_chorus_guitar_solo",
+      "label": "A→B→サビ×2→間奏（ギターソロ）→サビ（コーラス拡張）",
+      "en": "verse, pre-chorus, chorus repeated twice, a guitar solo interlude, then an extended choral final chorus",
+      "jp": "Aメロ→Bメロ→サビ×2→間奏（ギターソロ）→サビ（コーラス拡張）という構成にします。"
+    },
+    {
+      "key": "loop_building_climax",
+      "label": "ループ基調＋徐々に楽器追加でクライマックス",
+      "en": "a loop-based structure that gradually layers in instruments toward a climax",
+      "jp": "ループを基調としながら楽器を徐々に加えてクライマックスへ導く構成にします。"
+    },
+    {
+      "key": "short_op_form",
+      "label": "短尺OP型（1:30〜1:45）で凝縮",
+      "en": "a condensed anime-OP-length structure (about 1:30-1:45)",
+      "jp": "1分30秒〜1分45秒程度に凝縮した、短尺OP型の構成にします。"
+    },
+    {
+      "key": "cinematic_arc",
+      "label": "映画的導入→テーマ提示→加速→決着",
+      "en": "a cinematic arc: atmospheric introduction, theme statement, acceleration, and resolution",
+      "jp": "映画的な導入からテーマ提示、加速、決着へと至る構成にします。"
+    },
+    {
+      "key": "call_and_response",
+      "label": "コール＆レスポンス（ボーカル⇄コーラス）",
+      "en": "a call-and-response structure between lead vocal and chorus",
+      "jp": "ボーカルとコーラスが掛け合うコール＆レスポンス構成にします。"
+    },
+    {
+      "key": "tempo_change_drama",
+      "label": "テンポチェンジでドラマを作る",
+      "en": "a structure that uses tempo changes to build drama",
+      "jp": "テンポチェンジによってドラマを生み出す構成にします。"
+    },
+    {
+      "key": "break_silence_explosion",
+      "label": "ブレイク→静寂→爆発のダイナミクス",
+      "en": "a dynamic arc moving from a break into silence and then explosive release",
+      "jp": "ブレイクから静寂を経て爆発するダイナミクスのある構成にします。"
+    },
+    {
+      "key": "melody_led_alternating",
+      "label": "メロディ主導でギターとシンセが交互に主張",
+      "en": "a melody-led structure where guitar and synth alternate in the spotlight",
+      "jp": "メロディを主導に、ギターとシンセが交互に主張し合う構成にします。"
+    }
+  ],
+  "atmospheres": [
+    {
+      "key": "fast_paced",
+      "label": "疾走感",
+      "en": "fast-paced",
+      "jp": "疾走感のあるリズムを取り入れてください。"
+    },
+    {
+      "key": "emo",
+      "label": "エモ",
+      "en": "emotional",
+      "jp": "エモーショナルなメロディを強調してください。"
+    },
+    {
+      "key": "dark",
+      "label": "ダーク",
+      "en": "dark",
+      "jp": "ダークなトーンを強調してください。"
+    },
+    {
+      "key": "fantastical",
+      "label": "幻想的",
+      "en": "fantastical",
+      "jp": "幻想的な雰囲気を強調してください。"
+    },
+    {
+      "key": "aggressive",
+      "label": "攻撃的",
+      "en": "aggressive",
+      "jp": "攻撃的な質感を強調してください。"
+    },
+    {
+      "key": "melancholic",
+      "label": "メランコリック",
+      "en": "melancholic",
+      "jp": "メランコリックな質感を強調してください。"
+    },
+    {
+      "key": "ethereal",
+      "label": "幻想的",
+      "en": "ethereal",
+      "jp": "幻想的で浮遊感のある質感を強調してください。"
+    },
+    {
+      "key": "powerful",
+      "label": "パワフル",
+      "en": "powerful",
+      "jp": "パワフルな質感を強調してください。"
+    },
+    {
+      "key": "neon_city_nightscape",
+      "label": "ネオン煌めく都市夜景",
+      "en": "a neon-lit city nightscape",
+      "jp": "ネオンが煌めく都市の夜景のような質感を強調してください。"
+    },
+    {
+      "key": "cyberpunk_rain_light",
+      "label": "サイバーパンクの雨と光",
+      "en": "cyberpunk rain and light",
+      "jp": "サイバーパンクの雨と光が交錯するような質感を強調してください。"
+    },
+    {
+      "key": "youth_sunset_rush",
+      "label": "青春の夕焼けと疾走感",
+      "en": "a youthful sunset rush",
+      "jp": "青春の夕焼けを駆け抜けるような疾走感を強調してください。"
+    },
+    {
+      "key": "battlefield_resolve_hope",
+      "label": "戦場の決意と希望",
+      "en": "battlefield resolve and hope",
+      "jp": "戦場に立つような決意と希望を強調してください。"
+    },
+    {
+      "key": "future_city_solitude_passion",
+      "label": "未来都市の孤独と熱情",
+      "en": "future-city solitude and passion",
+      "jp": "未来都市の孤独と熱情が同居する質感を強調してください。"
+    },
+    {
+      "key": "cosmic_vastness_longing",
+      "label": "宇宙的な広がりと切なさ",
+      "en": "cosmic vastness and longing",
+      "jp": "宇宙的な広がりと切なさを強調してください。"
+    },
+    {
+      "key": "machine_human_resonance",
+      "label": "機械と人間の共鳴",
+      "en": "resonance between machine and human",
+      "jp": "機械と人間が共鳴するような質感を強調してください。"
+    },
+    {
+      "key": "live_venue_heat",
+      "label": "高揚するライブ会場の熱",
+      "en": "the heat of an electrified live venue",
+      "jp": "高揚するライブ会場の熱気を強調してください。"
+    },
+    {
+      "key": "fleeting_dream_fragment",
+      "label": "儚い夢の断片",
+      "en": "fragments of a fleeting dream",
+      "jp": "儚い夢の断片のような質感を強調してください。"
+    },
+    {
+      "key": "solemn_heroic_air",
+      "label": "荘厳で英雄的な空気",
+      "en": "a solemn, heroic air",
+      "jp": "荘厳で英雄的な空気を強調してください。"
+    }
+  ],
+  "sentenceTemplates": {
+    "en": {
+      "base": "Create a {genreEn} track",
+      "baseWithTempo": "Create a {genreEn} track at BPM {tempo}",
+      "mood": "The overall mood should evoke {moodEn}.",
+      "vocal": "Include {vocalEn} with expressive delivery.",
+      "instruments": "Use {instrumentList} as the main instruments.",
+      "structure": "Follow {structureEn}.",
+      "atmosphere": "The atmosphere should feel {atmosphereList}."
+    },
+    "jp": {
+      "bpm": "BPM{tempo} のトラックを制作してください。",
+      "genre": "{genreEn} の要素を取り入れたサウンドにします。",
+      "instruments": "{instrumentList} を中心とした編成で展開してください。"
+    }
+  },
+  "variantStyles": [
+    {
+      "id": "standard",
+      "label": "標準",
+      "description": "既存ロジックそのまま。中立的・実務的な文体で各要素を列挙する。",
+      "toneHint": "neutral, declarative sentences, one clause per attribute"
+    },
+    {
+      "id": "poetic",
+      "label": "詩的",
+      "description": "情景描写を増やし、比喩・感覚的な形容詞を混ぜたバリエーション案。3案生成時の2案目として使用。",
+      "toneHint": "evocative, sensory adjectives, metaphor allowed, slightly longer sentences"
+    },
+    {
+      "id": "minimal",
+      "label": "ミニマル",
+      "description": "キーワード列挙に近い簡潔な文体。AI作曲ツールへの入力トークン数を抑えたい場合向け。3案生成時の3案目として使用。",
+      "toneHint": "terse, comma-separated keyword phrases, minimal connective words"
+    }
+  ],
+  "consentModalTemplate": {
+    "title": "外部AIサービスへの送信確認",
+    "summaryLabel": "送信されるデータの要約",
+    "destinationLabel": "送信先",
+    "purposeLabel": "送信目的",
+    "consentButtonLabel": "同意して送信する",
+    "cancelButtonLabel": "キャンセル（ローカル生成を使用）",
+    "notes": "この同意ダイアログはClaude等の外部LLM連携（フェーズ2）でのみ表示する。現行MVPは完全ローカル生成のため未使用。"
+  }
+}

@@ -1,0 +1,66 @@
+import type { HistoryEntry } from '../../types/persistence'
+import type { TempoHintProposal } from '../../types/autoLoop'
+
+const MIN_SAMPLES = 2
+const MIN_AVERAGE_RATING = 4
+
+export interface TempoCandidate {
+  genreKey: string
+  tempo: number
+  sampleCount: number
+  averageRating: number
+}
+
+/**
+ * 評価付きの作曲履歴から「特定ジャンルで高評価だった時に使われたテンポ(BPM)」を発掘する。
+ * キーワードや優先度とは異なる改善種別(テンポ)の自己学習。ジャンルごとに実際に使われた
+ * テンポ値ごとに集計し、最も実績が良い(平均評価×log2(1+件数)が高い)一件だけを候補にする。
+ * 既にヒントが登録済みのジャンルは対象外(取り消せば再学習の対象に戻る)。
+ */
+export function mineTempoCandidates(entries: HistoryEntry[], alreadyHintedGenres: string[] = []): TempoCandidate[] {
+  const hintedSet = new Set(alreadyHintedGenres)
+  const acc = new Map<string, { sum: number; count: number; genreKey: string; tempo: number }>()
+
+  for (const entry of entries) {
+    if (entry.kind !== 'composition') continue
+    if (typeof entry.rating !== 'number' || entry.rating < MIN_AVERAGE_RATING) continue
+    const tempo = entry.input.tempo
+    if (!tempo) continue
+    if (hintedSet.has(entry.input.genreKey)) continue
+
+    const key = `${entry.input.genreKey}:${tempo}`
+    const existing = acc.get(key) ?? { sum: 0, count: 0, genreKey: entry.input.genreKey, tempo }
+    existing.sum += entry.rating
+    existing.count += 1
+    acc.set(key, existing)
+  }
+
+  const bestPerGenre = new Map<string, TempoCandidate>()
+  for (const { sum, count, genreKey, tempo } of acc.values()) {
+    const averageRating = sum / count
+    if (count < MIN_SAMPLES || averageRating < MIN_AVERAGE_RATING) continue
+
+    const implicitScore = averageRating * Math.log2(1 + count)
+    const current = bestPerGenre.get(genreKey)
+    const currentScore = current ? current.averageRating * Math.log2(1 + current.sampleCount) : -Infinity
+    if (implicitScore > currentScore) {
+      bestPerGenre.set(genreKey, { genreKey, tempo, sampleCount: count, averageRating })
+    }
+  }
+
+  return [...bestPerGenre.values()].sort((a, b) => b.averageRating - a.averageRating)
+}
+
+export function makeTempoHintDiff(candidate: TempoCandidate): TempoHintProposal {
+  return {
+    kind: 'tempoHint',
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    genreKey: candidate.genreKey,
+    tempo: candidate.tempo,
+    sampleCount: candidate.sampleCount,
+    averageRating: candidate.averageRating,
+    reason:
+      `ジャンル「${candidate.genreKey}」ではBPM${candidate.tempo}が${candidate.sampleCount}件・` +
+      `平均★${candidate.averageRating.toFixed(1)}と高評価のため、おすすめテンポとして学習します。`,
+  }
+}

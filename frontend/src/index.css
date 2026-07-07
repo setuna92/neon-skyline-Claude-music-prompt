@@ -1,0 +1,287 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-blue: #00d4ff;
+  --color-neon-purple: #ff00ff;
+  --color-neon-cyan: #00ffff;
+  --color-neon-pink: #ff0080;
+  --color-neon-green: #39ff14;
+  --color-neon-violet: #8b5cf6;
+
+  --color-dark-bg: #070b1e;
+  --color-dark-panel: #12122a;
+  --color-dark-lighter: #16213e;
+
+  --color-text-primary: #e0e0ff;
+  --color-text-secondary: #a0a0d0;
+  --color-text-muted: #606080;
+
+  --color-border-neon: #2a2a4e;
+
+  --font-sans: 'Segoe UI', 'Roboto', 'Noto Sans JP', sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-dark-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.8;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100svh;
+  position: relative;
+  isolation: isolate;
+}
+
+/* ============================================
+   アニメーション背景（浮遊するグラデーションオーブ）
+   ============================================ */
+
+#root::before,
+#root::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+#root::before {
+  width: 480px;
+  height: 480px;
+  top: -120px;
+  left: -120px;
+  background: radial-gradient(circle, var(--color-neon-blue), transparent 70%);
+  animation: orb-drift-a 24s ease-in-out infinite;
+}
+
+#root::after {
+  width: 540px;
+  height: 540px;
+  bottom: -160px;
+  right: -140px;
+  background: radial-gradient(circle, var(--color-neon-purple), transparent 70%);
+  animation: orb-drift-b 30s ease-in-out infinite;
+}
+
+@keyframes orb-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(60px, 80px) scale(1.15); }
+}
+
+@keyframes orb-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-70px, -60px) scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root::before,
+  #root::after {
+    animation: none;
+  }
+}
+
+/* ============================================
+   共通UIユーティリティ
+   ============================================ */
+
+@utility glass-panel {
+  background: color-mix(in srgb, var(--color-dark-panel) 72%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--color-border-neon) 80%, var(--color-neon-blue) 20%);
+  border-radius: 1rem;
+  box-shadow:
+    0 4px 24px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+@utility glass-panel-hover {
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-neon-blue) 45%, var(--color-border-neon));
+    box-shadow:
+      0 4px 32px rgb(0 212 255 / 0.10),
+      0 4px 24px rgb(0 0 0 / 0.35),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+}
+
+@utility btn-primary {
+  position: relative;
+  background: linear-gradient(135deg, var(--color-neon-blue), var(--color-neon-violet));
+  color: #04101c;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  transition: box-shadow 0.25s ease, transform 0.15s ease, filter 0.25s ease;
+  box-shadow: 0 2px 14px rgb(0 212 255 / 0.25);
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 4px 24px rgb(0 212 255 / 0.45);
+    filter: brightness(1.08);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
+@utility btn-ghost {
+  border: 1px solid var(--color-border-neon);
+  border-radius: 0.75rem;
+  color: var(--color-text-secondary);
+  transition: border-color 0.25s ease, color 0.25s ease, background-color 0.25s ease, transform 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-neon-cyan) 55%, var(--color-border-neon));
+    color: var(--color-neon-cyan);
+    background: rgb(0 212 255 / 0.05);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+
+@utility btn-danger-ghost {
+  border: 1px solid color-mix(in srgb, var(--color-neon-pink) 55%, transparent);
+  border-radius: 0.75rem;
+  color: var(--color-neon-pink);
+  transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease, transform 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgb(255 0 128 / 0.08);
+    box-shadow: 0 2px 16px rgb(255 0 128 / 0.18);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+
+@utility input-neon {
+  background: color-mix(in srgb, var(--color-dark-lighter) 80%, transparent);
+  border: 1px solid var(--color-border-neon);
+  border-radius: 0.65rem;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-neon-blue);
+    box-shadow: 0 0 0 3px rgb(0 212 255 / 0.12);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
+@utility chip-neon {
+  border: 1px solid var(--color-border-neon);
+  border-radius: 9999px;
+  color: var(--color-text-secondary);
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease, transform 0.12s ease;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-neon-cyan) 50%, var(--color-border-neon));
+    color: var(--color-neon-cyan);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+@utility chip-neon-selected {
+  border: 1px solid var(--color-neon-blue);
+  border-radius: 9999px;
+  color: var(--color-neon-blue);
+  background: rgb(0 212 255 / 0.10);
+  box-shadow: 0 0 10px rgb(0 212 255 / 0.18);
+  transition: transform 0.12s ease;
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+@utility title-gradient {
+  background: linear-gradient(92deg, var(--color-neon-blue), var(--color-neon-cyan) 45%, var(--color-neon-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px rgb(0 212 255 / 0.35));
+}
+
+@utility tab-active {
+  color: var(--color-neon-blue);
+  background: linear-gradient(180deg, rgb(0 212 255 / 0.10), transparent);
+  box-shadow: inset 0 -2px 0 var(--color-neon-blue);
+  text-shadow: 0 0 12px rgb(0 212 255 / 0.5);
+}
+
+/* ============================================
+   細部の仕上げ
+   ============================================ */
+
+/* カスタムスクロールバー */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-neon) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-neon);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-neon-blue) 40%, var(--color-border-neon));
+}
+
+/* コンテンツのフェードイン */
+main > * {
+  animation: content-enter 0.35s ease both;
+}
+
+@keyframes content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main > * {
+    animation: none;
+  }
+}
+
+/* select / checkbox のアクセントカラー */
+select,
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-neon-blue);
+}

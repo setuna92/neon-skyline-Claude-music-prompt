@@ -1,0 +1,103 @@
+import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
+import type { GenerationInput } from '../types/generation'
+import type { LyricsPromptInput } from '../types/lyricsPrompt'
+import { effectiveRating } from './learning/effectiveRating'
+
+const MIN_RATING = 4
+
+export interface FavoriteCombo<TInput> {
+  /** グループの一意キー（同じ組み合わせを束ねる際の内部シグネチャ） */
+  id: string
+  /** このグループで最も評価が高かった(同点なら最新の)サンプルの入力。適用時にそのまま使う。 */
+  input: TInput
+  sampleCount: number
+  averageRating: number
+}
+
+function normalizeField(value: unknown): unknown {
+  return Array.isArray(value) ? [...value].sort() : (value ?? null)
+}
+
+function comboSignature(input: unknown, fields: string[]): string {
+  const rec = input as Record<string, unknown>
+  return JSON.stringify(fields.map((f) => normalizeField(rec[f])))
+}
+
+interface RatedEntry<TInput> {
+  input: TInput
+  rating?: number
+  createdAt: string
+}
+
+/**
+ * 評価4以上の履歴を、指定フィールドの組み合わせでグループ化し、
+ * 平均評価×log2(1+件数)の順にランク付けする。
+ * グループの代表入力(themeKeywordsなど、グループ化に使わないフィールドを含む)は
+ * そのグループ内で最も評価が高い(同点なら最新の)サンプルを採用する。
+ */
+function buildFavoriteCombos<TInput>(entries: RatedEntry<TInput>[], groupFields: string[]): FavoriteCombo<TInput>[] {
+  const groups = new Map<
+    string,
+    { sum: number; count: number; best: TInput; bestRating: number; bestCreatedAt: string }
+  >()
+
+  for (const entry of entries) {
+    if (typeof entry.rating !== 'number' || entry.rating < MIN_RATING) continue
+    const signature = comboSignature(entry.input, groupFields)
+    const group = groups.get(signature)
+    if (!group) {
+      groups.set(signature, {
+        sum: entry.rating,
+        count: 1,
+        best: entry.input,
+        bestRating: entry.rating,
+        bestCreatedAt: entry.createdAt,
+      })
+      continue
+    }
+    group.sum += entry.rating
+    group.count += 1
+    if (entry.rating > group.bestRating || (entry.rating === group.bestRating && entry.createdAt > group.bestCreatedAt)) {
+      group.best = entry.input
+      group.bestRating = entry.rating
+      group.bestCreatedAt = entry.createdAt
+    }
+  }
+
+  const combos: FavoriteCombo<TInput>[] = []
+  for (const [signature, group] of groups) {
+    combos.push({ id: signature, input: group.best, sampleCount: group.count, averageRating: group.sum / group.count })
+  }
+
+  return combos.sort((a, b) => {
+    const implicitA = a.averageRating * Math.log2(1 + a.sampleCount)
+    const implicitB = b.averageRating * Math.log2(1 + b.sampleCount)
+    return implicitB - implicitA
+  })
+}
+
+const COMPOSITION_GROUP_FIELDS = [
+  'genreKey',
+  'moodKey',
+  'vocalTypeKey',
+  'songStructureKey',
+  'instrumentKeys',
+  'atmosphereKeys',
+  'tempo',
+]
+
+const LYRICS_GROUP_FIELDS = ['genreKey', 'moodKey', 'vocalTypeKey', 'songStructureKey', 'atmosphereKeys', 'languageKey']
+
+export function computeFavoriteCompositionCombos(entries: CompositionHistoryEntry[]): FavoriteCombo<GenerationInput>[] {
+  return buildFavoriteCombos(
+    entries.map((e) => ({ input: e.input, rating: effectiveRating(e), createdAt: e.createdAt })),
+    COMPOSITION_GROUP_FIELDS,
+  )
+}
+
+export function computeFavoriteLyricsCombos(entries: LyricsPromptHistoryEntry[]): FavoriteCombo<LyricsPromptInput>[] {
+  return buildFavoriteCombos(
+    entries.map((e) => ({ input: e.input, rating: effectiveRating(e), createdAt: e.createdAt })),
+    LYRICS_GROUP_FIELDS,
+  )
+}

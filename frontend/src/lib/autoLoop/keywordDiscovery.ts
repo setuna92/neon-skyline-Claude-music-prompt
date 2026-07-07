@@ -1,0 +1,225 @@
+import genreKeywordsData from '../../data/genreKeywords.json'
+import selectionKeywordsData from '../../data/selectionKeywords.json'
+import type { GenreKeywordData } from '../../types/genreKeywordBank'
+import type { HistoryEntry } from '../../types/persistence'
+import type { KeywordAssociationProposal, KeywordDemotionProposal, KeywordDiscoveryProposal } from '../../types/autoLoop'
+import type { KeywordAssociation, KeywordAssociationContext } from '../../types/learning'
+import { THEME_WORD_BANK } from './executor'
+import { effectiveRating } from '../learning/effectiveRating'
+
+const MIN_SAMPLES = 2
+const MIN_AVERAGE_RATING = 4
+const MIN_ASSOCIATION_SAMPLES = 2
+const MIN_ASSOCIATION_RATING = 4
+const MIN_DEMOTION_SAMPLES = 3
+const MAX_DEMOTION_RATING = 2.5
+
+interface SelectionKeywords {
+  moods: Record<string, string[]>
+  atmospheres: Record<string, string[]>
+}
+
+const genreKeywords = genreKeywordsData as GenreKeywordData
+const selectionKeywords = selectionKeywordsData as unknown as SelectionKeywords
+
+let knownWordsCache: Set<string> | null = null
+
+/** 既存のあらゆる語彙プール（ジャンルバンク・ムード/雰囲気連想語・実行用バンク）に含まれる語の集合 */
+export function getKnownWords(): Set<string> {
+  if (knownWordsCache) return knownWordsCache
+
+  const known = new Set<string>(THEME_WORD_BANK)
+  for (const entry of genreKeywords.genres) {
+    for (const words of Object.values(entry.keywords)) {
+      for (const word of words) known.add(word)
+    }
+  }
+  for (const words of Object.values(selectionKeywords.moods)) {
+    for (const word of words) known.add(word)
+  }
+  for (const words of Object.values(selectionKeywords.atmospheres)) {
+    for (const word of words) known.add(word)
+  }
+
+  knownWordsCache = known
+  return known
+}
+
+export interface KeywordCandidate {
+  word: string
+  sampleCount: number
+  averageRating: number
+}
+
+/**
+ * 評価付き履歴から「どの語彙プールにも無いのに、手入力で使われて高評価だった語」を発掘する。
+ * ユーザーの実際の使用実績に基づく、確実性の高い新語彙候補。
+ */
+export function mineKeywordCandidates(
+  entries: HistoryEntry[],
+  alreadyDiscovered: string[] = [],
+): KeywordCandidate[] {
+  const known = getKnownWords()
+  const discoveredSet = new Set(alreadyDiscovered)
+
+  const acc = new Map<string, { sum: number; count: number }>()
+  for (const entry of entries) {
+    const rating = effectiveRating(entry)
+    if (typeof rating !== 'number' || rating <= 0) continue
+    for (const word of entry.input.themeKeywords ?? []) {
+      if (!word || known.has(word) || discoveredSet.has(word)) continue
+      const existing = acc.get(word) ?? { sum: 0, count: 0 }
+      existing.sum += rating
+      existing.count += 1
+      acc.set(word, existing)
+    }
+  }
+
+  const candidates: KeywordCandidate[] = []
+  for (const [word, { sum, count }] of acc) {
+    const averageRating = sum / count
+    if (count >= MIN_SAMPLES && averageRating >= MIN_AVERAGE_RATING) {
+      candidates.push({ word, sampleCount: count, averageRating })
+    }
+  }
+  return candidates.sort((a, b) => b.averageRating - a.averageRating)
+}
+
+export function makeDiscoveryDiff(candidate: KeywordCandidate): KeywordDiscoveryProposal {
+  return {
+    kind: 'keywordDiscovery',
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    word: candidate.word,
+    source: 'history',
+    reason:
+      `手入力キーワード「${candidate.word}」が${candidate.sampleCount}件の履歴で` +
+      `平均★${candidate.averageRating.toFixed(1)}と高評価のため、提案語彙に昇格させます。`,
+  }
+}
+
+export interface AssociationCandidate {
+  word: string
+  contextType: KeywordAssociationContext
+  contextKey: string
+  sampleCount: number
+  averageRating: number
+}
+
+const CONTEXT_LABELS: Record<KeywordAssociationContext, string> = { mood: 'ムード', atmosphere: '雰囲気' }
+
+/**
+ * 評価付き履歴から「特定のムード/雰囲気と組み合わせて使われた時に高評価だった語」を発掘する。
+ * 既にその文脈の連想語(静的な連想語リスト、または既に学習済みの連想)である場合は対象外。
+ * グローバルな語彙発見(mineKeywordCandidates)とは異なり、既存プールにある語でも
+ * 「この文脈との相性が良い」という新しい情報があれば学習の対象になる。
+ */
+export function mineAssociationCandidates(
+  entries: HistoryEntry[],
+  alreadyAssociated: KeywordAssociation[] = [],
+): AssociationCandidate[] {
+  const alreadySet = new Set(alreadyAssociated.map((a) => `${a.contextType}:${a.contextKey}:${a.word}`))
+
+  const acc = new Map<
+    string,
+    { sum: number; count: number; word: string; contextType: KeywordAssociationContext; contextKey: string }
+  >()
+
+  for (const entry of entries) {
+    const rating = effectiveRating(entry)
+    if (typeof rating !== 'number' || rating < MIN_ASSOCIATION_RATING) continue
+    const keywords = entry.input.themeKeywords ?? []
+    if (keywords.length === 0) continue
+
+    const contexts: { contextType: KeywordAssociationContext; contextKey: string }[] = []
+    if (entry.input.moodKey) contexts.push({ contextType: 'mood', contextKey: entry.input.moodKey })
+    for (const atmosphereKey of entry.input.atmosphereKeys ?? []) {
+      contexts.push({ contextType: 'atmosphere', contextKey: atmosphereKey })
+    }
+
+    for (const word of keywords) {
+      if (!word) continue
+      for (const ctx of contexts) {
+        const staticWords =
+          ctx.contextType === 'mood' ? selectionKeywords.moods[ctx.contextKey] : selectionKeywords.atmospheres[ctx.contextKey]
+        if (staticWords?.includes(word)) continue
+
+        const key = `${ctx.contextType}:${ctx.contextKey}:${word}`
+        if (alreadySet.has(key)) continue
+
+        const existing = acc.get(key) ?? { sum: 0, count: 0, word, contextType: ctx.contextType, contextKey: ctx.contextKey }
+        existing.sum += rating
+        existing.count += 1
+        acc.set(key, existing)
+      }
+    }
+  }
+
+  const candidates: AssociationCandidate[] = []
+  for (const { sum, count, word, contextType, contextKey } of acc.values()) {
+    const averageRating = sum / count
+    if (count >= MIN_ASSOCIATION_SAMPLES && averageRating >= MIN_ASSOCIATION_RATING) {
+      candidates.push({ word, contextType, contextKey, sampleCount: count, averageRating })
+    }
+  }
+  return candidates.sort((a, b) => b.averageRating - a.averageRating)
+}
+
+export function makeAssociationDiff(candidate: AssociationCandidate): KeywordAssociationProposal {
+  return {
+    kind: 'keywordAssociation',
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    word: candidate.word,
+    contextType: candidate.contextType,
+    contextKey: candidate.contextKey,
+    reason:
+      `「${candidate.word}」は${CONTEXT_LABELS[candidate.contextType]}「${candidate.contextKey}」との組み合わせで` +
+      `${candidate.sampleCount}件・平均★${candidate.averageRating.toFixed(1)}のため、この文脈の連想語として追加します。`,
+  }
+}
+
+export interface DemotionCandidate {
+  word: string
+  sampleCount: number
+  averageRating: number
+}
+
+/**
+ * 評価付き履歴から「使われるたびに低評価が続いている語」を発掘する。
+ * 既存プール由来か発見済み語彙かを問わず、実績が悪ければ降格(以後の提案から除外)の対象にする。
+ */
+export function mineDemotionCandidates(entries: HistoryEntry[], alreadyDemoted: string[] = []): DemotionCandidate[] {
+  const demotedSet = new Set(alreadyDemoted)
+
+  const acc = new Map<string, { sum: number; count: number }>()
+  for (const entry of entries) {
+    const rating = effectiveRating(entry)
+    if (typeof rating !== 'number') continue
+    for (const word of entry.input.themeKeywords ?? []) {
+      if (!word || demotedSet.has(word)) continue
+      const existing = acc.get(word) ?? { sum: 0, count: 0 }
+      existing.sum += rating
+      existing.count += 1
+      acc.set(word, existing)
+    }
+  }
+
+  const candidates: DemotionCandidate[] = []
+  for (const [word, { sum, count }] of acc) {
+    const averageRating = sum / count
+    if (count >= MIN_DEMOTION_SAMPLES && averageRating <= MAX_DEMOTION_RATING) {
+      candidates.push({ word, sampleCount: count, averageRating })
+    }
+  }
+  return candidates.sort((a, b) => a.averageRating - b.averageRating)
+}
+
+export function makeDemotionDiff(candidate: DemotionCandidate): KeywordDemotionProposal {
+  return {
+    kind: 'keywordDemotion',
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    word: candidate.word,
+    reason:
+      `「${candidate.word}」は${candidate.sampleCount}件の使用で平均★${candidate.averageRating.toFixed(1)}と` +
+      `低評価が続いたため、以後の提案から除外します。`,
+  }
+}

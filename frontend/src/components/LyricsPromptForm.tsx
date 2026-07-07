@@ -1,0 +1,386 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import templatesData from '../data/templates.json'
+import type { PromptTemplates } from '../types/templates'
+import type { LyricsPromptInput, LyricsPromptSeed } from '../types/lyricsPrompt'
+import type { ImportedPrompt } from '../types/promptLibrary'
+import { EMPTY_GENOME, genomeFromMutations } from '../types/textGenome'
+import type { TextGenome } from '../types/textGenome'
+import { generateLyricsPromptVariants } from '../lib/lyricsPromptGenerator'
+import { buildKeywordSuggestions } from '../lib/keywordSuggestionEngine'
+import { pickSmartLyricsInput } from '../lib/smartSelect'
+import { addHistoryEntry, getAllHistory, getTextMutations } from '../lib/db'
+import { useOptionRanking } from '../hooks/useOptionRanking'
+import { useKeywordScores } from '../hooks/useKeywordScores'
+import { useDiscoveredKeywords } from '../hooks/useDiscoveredKeywords'
+import { useKeywordAssociations } from '../hooks/useKeywordAssociations'
+import { useDemotedKeywords } from '../hooks/useDemotedKeywords'
+import { useFavoriteLyricsCombos } from '../hooks/useFavoriteCombos'
+import { PromptLibraryPanel } from './PromptLibraryPanel'
+import { KeywordSuggestionPicker } from './KeywordSuggestionPicker'
+import { FavoriteComboPicker } from './FavoriteComboPicker'
+
+const templates = templatesData as PromptTemplates
+
+function toggleKey(list: string[], key: string): string[] {
+  return list.includes(key) ? list.filter((k) => k !== key) : [...list, key]
+}
+
+function withRatingBadge(label: string, averageRating: number | undefined): string {
+  return averageRating !== undefined && averageRating >= 4 ? `⭐ ${label}` : label
+}
+
+function findLabel(list: { key: string; label: string }[], key: string | undefined): string | undefined {
+  return key ? list.find((e) => e.key === key)?.label : undefined
+}
+
+function describeLyricsCombo(input: LyricsPromptInput): string {
+  const parts = [
+    findLabel(templates.genres, input.genreKey) ?? input.genreKey,
+    findLabel(templates.moods, input.moodKey),
+    findLabel(templates.vocalTypes, input.vocalTypeKey) ?? 'ボーカルなし',
+    findLabel(templates.songStructures, input.songStructureKey),
+    input.atmosphereKeys.length
+      ? `雰囲気:${input.atmosphereKeys.map((k) => findLabel(templates.atmospheres, k) ?? k).join('/')}`
+      : undefined,
+    input.themeKeywords.length ? `テーマ:${input.themeKeywords.join('/')}` : undefined,
+    input.languageKey === 'en' ? '英語' : '日本語',
+  ]
+  return parts.filter(Boolean).join(' / ')
+}
+
+interface LyricsPromptFormProps {
+  onGenerated: (historyEntryId: string, result: ReturnType<typeof generateLyricsPromptVariants>) => void
+  /** 作曲プロンプトから引き継ぐ初期値。マウント時に一度だけ反映する。 */
+  seed?: LyricsPromptSeed | null
+  /** seedを反映し終えたことを親に伝える(手動でタブを開き直した時の再適用を防ぐ) */
+  onSeedConsumed?: () => void
+}
+
+export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPromptFormProps) {
+  const [genreFilter, setGenreFilter] = useState('')
+  const [moodKey, setMoodKey] = useState<string | undefined>(seed?.moodKey)
+  const [genreKey, setGenreKey] = useState(seed?.genreKey ?? '')
+  const [atmosphereKeys, setAtmosphereKeys] = useState<string[]>(seed?.atmosphereKeys ?? [])
+  const [vocalTypeKey, setVocalTypeKey] = useState<string | undefined>(seed?.vocalTypeKey)
+  const [songStructureKey, setSongStructureKey] = useState<string | undefined>(seed?.songStructureKey)
+  const [themeKeywordsText, setThemeKeywordsText] = useState(seed?.themeKeywords.join(', ') ?? '')
+  const [languageKey, setLanguageKey] = useState<'ja' | 'en'>('ja')
+  const [selectedPrompt, setSelectedPrompt] = useState<ImportedPrompt | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  // busy(state)は再レンダー後まで最新値を読めないため、同期的な連打(2重送信)を防ぐのに使う
+  const busyRef = useRef(false)
+  const [genome, setGenome] = useState<TextGenome>(EMPTY_GENOME)
+  const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
+  const [atmosphereOpen, setAtmosphereOpen] = useState((seed?.atmosphereKeys.length ?? 0) > 0)
+  const [appliedMessage, setAppliedMessage] = useState<string | null>(null)
+  const { rank, scoreFor } = useOptionRanking()
+
+  useEffect(() => {
+    if (seed) onSeedConsumed?.()
+    // マウント時に一度だけseedを消費する(依存配列は意図的に空)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    getTextMutations()
+      .then((mutations) => setGenome(genomeFromMutations(mutations)))
+      .catch(() => setGenome(EMPTY_GENOME))
+  }, [])
+
+  const keywordScores = useKeywordScores()
+  const discoveredWords = useDiscoveredKeywords()
+  const learnedAssociations = useKeywordAssociations()
+  const demotedWords = useDemotedKeywords()
+  const favoriteCombos = useFavoriteLyricsCombos()
+  const suggestionGroups = useMemo(
+    () =>
+      buildKeywordSuggestions(
+        { genreKey, moodKey, atmosphereKeys, discoveredWords, learnedAssociations, demotedWords },
+        keywordScores,
+      ),
+    [genreKey, moodKey, atmosphereKeys, keywordScores, discoveredWords, learnedAssociations, demotedWords],
+  )
+
+  // ジャンルを変えたら、そのジャンル向けの候補選択もリセットする
+  useEffect(() => {
+    setSelectedSuggestions([])
+  }, [genreKey])
+
+  function handleToggleSuggestion(word: string) {
+    setSelectedSuggestions((prev) => (prev.includes(word) ? prev.filter((w) => w !== word) : [...prev, word]))
+  }
+
+  function handleApplyCombo(combo: LyricsPromptInput) {
+    setGenreFilter('')
+    setGenreKey(combo.genreKey)
+    setMoodKey(combo.moodKey)
+    setVocalTypeKey(combo.vocalTypeKey)
+    setSongStructureKey(combo.songStructureKey)
+    setAtmosphereKeys(combo.atmosphereKeys)
+    setThemeKeywordsText(combo.themeKeywords.join(', '))
+    setLanguageKey(combo.languageKey)
+    setSelectedSuggestions([])
+    // 雰囲気は折りたたみの中にあり、閉じたままだとチェックが変わっても見えないため開く
+    setAtmosphereOpen(combo.atmosphereKeys.length > 0)
+    setAppliedMessage('組み合わせを適用しました。内容を確認して「歌詞プロンプトを生成」を押してください。')
+    setTimeout(() => setAppliedMessage(null), 4000)
+  }
+
+  const filteredGenres = rank('genreKey', templates.genres).filter(
+    (g) =>
+      genreFilter.trim() === '' ||
+      g.label.includes(genreFilter) ||
+      (g.en ?? '').toLowerCase().includes(genreFilter.toLowerCase()),
+  )
+  const rankedMoods = rank('moodKey', templates.moods)
+  const rankedVocalTypes = rank('vocalTypeKey', templates.vocalTypes)
+  const rankedSongStructures = rank('songStructureKey', templates.songStructures)
+  const rankedAtmospheres = rank('atmosphereKeys', templates.atmospheres)
+
+  async function runGeneration(input: LyricsPromptInput) {
+    setError(null)
+    setBusy(true)
+    try {
+      let result
+      try {
+        result = generateLyricsPromptVariants(input, genome)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '生成に失敗しました')
+        return
+      }
+      const entry = await addHistoryEntry({ kind: 'lyricsPrompt', input, variants: result.variants, tags: [] })
+      onGenerated(entry.id, result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '履歴の保存に失敗しました')
+    } finally {
+      setBusy(false)
+      busyRef.current = false
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    // busy(state)は同期的な連打の間は古い値のままなので、refで即座にガードする
+    if (busyRef.current) return
+    busyRef.current = true
+    const manualKeywords = themeKeywordsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    const themeKeywords = [...new Set([...manualKeywords, ...selectedSuggestions])]
+
+    await runGeneration({
+      genreKey,
+      moodKey,
+      atmosphereKeys,
+      vocalTypeKey,
+      songStructureKey,
+      themeKeywords,
+      languageKey,
+      basePromptText: selectedPrompt?.body,
+    })
+  }
+
+  async function handleAutoSelect() {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setError(null)
+    setGenreFilter('')
+    const history = await getAllHistory().catch(() => [])
+    const { input: picked } = pickSmartLyricsInput(history)
+    setGenreKey(picked.genreKey)
+    setMoodKey(picked.moodKey)
+    setVocalTypeKey(picked.vocalTypeKey)
+    setSongStructureKey(picked.songStructureKey)
+    setAtmosphereKeys(picked.atmosphereKeys)
+    setThemeKeywordsText(picked.themeKeywords.join(', '))
+    setLanguageKey(picked.languageKey)
+    setSelectedSuggestions([])
+    setAtmosphereOpen(picked.atmosphereKeys.length > 0)
+    await runGeneration(picked)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <button
+        type="button"
+        onClick={() => void handleAutoSelect()}
+        disabled={busy}
+        className="w-full btn-primary py-2.5 text-sm disabled:opacity-50"
+      >
+        {busy ? '生成中…' : '🎲 自動選択でおまかせ生成'}
+      </button>
+      <p className="text-[11px] text-text-muted -mt-2">
+        相性の良い（過去の高評価の実績に基づく）組み合わせを全項目自動で選び、そのままプロンプトまで生成します。
+      </p>
+
+      <FavoriteComboPicker combos={favoriteCombos} describe={describeLyricsCombo} onApply={handleApplyCombo} />
+      {appliedMessage && (
+        <p className="text-xs text-neon-green bg-dark-lighter border border-neon-green rounded-lg px-3 py-2">
+          ✅ {appliedMessage}
+        </p>
+      )}
+
+      <PromptLibraryPanel
+        selectedId={selectedPrompt?.id}
+        onSelect={setSelectedPrompt}
+      />
+
+      <div className="glass-panel glass-panel-hover p-4 space-y-3">
+        <div>
+          <label className="text-xs text-text-secondary block mb-1" htmlFor="lyrics-genre-filter">
+            ジャンル（必須）
+          </label>
+          <input
+            id="lyrics-genre-filter"
+            type="text"
+            placeholder="検索…"
+            value={genreFilter}
+            onChange={(e) => setGenreFilter(e.target.value)}
+            className="w-full input-neon px-3 py-2 text-sm mb-2"
+          />
+          <select
+            size={6}
+            value={genreKey}
+            onChange={(e) => setGenreKey(e.target.value)}
+            className="w-full input-neon px-3 py-2 text-sm"
+          >
+            {filteredGenres.map((g) => (
+              <option key={g.key} value={g.key}>
+                {withRatingBadge(g.label, scoreFor('genreKey', g.key)?.averageRating)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-text-secondary block mb-1" htmlFor="lyrics-theme">
+            テーマ・キーワード（カンマ区切り、必須）
+          </label>
+          <input
+            id="lyrics-theme"
+            type="text"
+            value={themeKeywordsText}
+            onChange={(e) => setThemeKeywordsText(e.target.value)}
+            placeholder="例: 夏, 別れ, 花火"
+            className="w-full input-neon px-3 py-2 text-sm"
+          />
+          {suggestionGroups.length > 0 && (
+            <div className="mt-2">
+              <KeywordSuggestionPicker
+                groups={suggestionGroups}
+                selected={selectedSuggestions}
+                onToggle={handleToggleSuggestion}
+                scores={keywordScores}
+              />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="text-xs text-text-secondary block mb-1" htmlFor="lyrics-language">
+            歌詞の言語
+          </label>
+          <select
+            id="lyrics-language"
+            value={languageKey}
+            onChange={(e) => setLanguageKey(e.target.value as 'ja' | 'en')}
+            className="w-full input-neon px-3 py-2 text-sm"
+          >
+            <option value="ja">日本語</option>
+            <option value="en">英語</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-text-secondary block mb-1" htmlFor="lyrics-mood">
+            ムード
+          </label>
+          <select
+            id="lyrics-mood"
+            value={moodKey ?? ''}
+            onChange={(e) => setMoodKey(e.target.value || undefined)}
+            className="w-full input-neon px-3 py-2 text-sm"
+          >
+            <option value="">未選択</option>
+            {rankedMoods.map((m) => (
+              <option key={m.key} value={m.key}>
+                {withRatingBadge(m.label, scoreFor('moodKey', m.key)?.averageRating)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-text-secondary block mb-1" htmlFor="lyrics-vocal">
+            ボーカル
+          </label>
+          <select
+            id="lyrics-vocal"
+            value={vocalTypeKey ?? ''}
+            onChange={(e) => setVocalTypeKey(e.target.value || undefined)}
+            className="w-full input-neon px-3 py-2 text-sm"
+          >
+            <option value="">未選択</option>
+            {rankedVocalTypes.map((v) => (
+              <option key={v.key} value={v.key}>
+                {withRatingBadge(v.label, scoreFor('vocalTypeKey', v.key)?.averageRating)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-text-secondary block mb-1" htmlFor="lyrics-structure">
+            曲構成
+          </label>
+          <select
+            id="lyrics-structure"
+            value={songStructureKey ?? ''}
+            onChange={(e) => setSongStructureKey(e.target.value || undefined)}
+            className="w-full input-neon px-3 py-2 text-sm"
+          >
+            <option value="">未選択</option>
+            {rankedSongStructures.map((s) => (
+              <option key={s.key} value={s.key}>
+                {withRatingBadge(s.label, scoreFor('songStructureKey', s.key)?.averageRating)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <details
+          className="text-sm"
+          open={atmosphereOpen}
+          onToggle={(e) => setAtmosphereOpen(e.currentTarget.open)}
+        >
+          <summary className="text-neon-cyan cursor-pointer">雰囲気を選択 ({atmosphereKeys.length})</summary>
+          <div className="grid grid-cols-2 gap-1 mt-2 max-h-48 overflow-y-auto pr-1">
+            {rankedAtmospheres.map((atmosphere) => (
+              <label key={atmosphere.key} className="flex items-center gap-2 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={atmosphereKeys.includes(atmosphere.key)}
+                  onChange={() => setAtmosphereKeys((prev) => toggleKey(prev, atmosphere.key))}
+                />
+                {withRatingBadge(atmosphere.label, scoreFor('atmosphereKeys', atmosphere.key)?.averageRating)}
+              </label>
+            ))}
+          </div>
+        </details>
+      </div>
+
+      {error && <p className="text-xs text-neon-pink">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={busy}
+        className="w-full btn-primary py-2 disabled:opacity-50"
+      >
+        {busy ? '生成中…' : '歌詞プロンプトを生成'}
+      </button>
+    </form>
+  )
+}

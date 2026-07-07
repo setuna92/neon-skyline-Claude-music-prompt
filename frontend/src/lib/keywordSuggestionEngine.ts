@@ -1,0 +1,162 @@
+import templatesData from '../data/templates.json'
+import selectionKeywordsData from '../data/selectionKeywords.json'
+import type { PromptTemplates } from '../types/templates'
+import type { KeywordSuggestionCategory } from '../types/genreKeywordBank'
+import { KEYWORD_SUGGESTION_CATEGORY_LABELS } from '../types/genreKeywordBank'
+import type { HistoryEntry } from '../types/persistence'
+import type { KeywordAssociation } from '../types/learning'
+import { getKeywordBankForGenre } from './genreKeywordBank'
+import { effectiveRating } from './learning/effectiveRating'
+
+const templates = templatesData as PromptTemplates
+
+interface SelectionKeywords {
+  moods: Record<string, string[]>
+  atmospheres: Record<string, string[]>
+}
+
+const selectionKeywords = selectionKeywordsData as unknown as SelectionKeywords
+
+export interface KeywordSuggestionGroup {
+  id: string
+  label: string
+  words: string[]
+}
+
+export interface KeywordScore {
+  sampleCount: number
+  averageRating: number
+}
+
+export interface BuildSuggestionArgs {
+  genreKey?: string
+  moodKey?: string
+  atmosphereKeys?: string[]
+  /** ジャンルバンクから表示するカテゴリ。省略時は歌詞プロンプト向けの既定セット。 */
+  genreCategories?: KeywordSuggestionCategory[]
+  /** Auto-Loopが自動発見した語彙。存在すれば独立グループとして表示する。 */
+  discoveredWords?: string[]
+  /** Auto-Loopが学習した「特定のムード/雰囲気との組み合わせ」の連想語。該当グループに注入される。 */
+  learnedAssociations?: KeywordAssociation[]
+  /** Auto-Loopが低評価の実績から降格させた語。全グループから除外される。 */
+  demotedWords?: string[]
+}
+
+const DEFAULT_GENRE_CATEGORIES: KeywordSuggestionCategory[] = [
+  'chorus_hooks',
+  'imagery',
+  'short_phrases',
+  'adjectives',
+  'verbs',
+]
+
+function moodLabel(moodKey: string): string {
+  return templates.moods.find((m) => m.key === moodKey)?.label ?? moodKey
+}
+
+function atmosphereLabel(atmosphereKey: string): string {
+  return templates.atmospheres.find((a) => a.key === atmosphereKey)?.label ?? atmosphereKey
+}
+
+/**
+ * 履歴の評価データから「実際に使われて高評価だったキーワード」を集計する。
+ * 作曲・歌詞プロンプト両方の themeKeywords を対象とする（自己学習ループと同じ発想）。
+ */
+export function scoreKeywordsFromHistory(entries: HistoryEntry[]): Map<string, KeywordScore> {
+  const acc = new Map<string, { sum: number; count: number }>()
+  for (const entry of entries) {
+    const rating = effectiveRating(entry)
+    if (typeof rating !== 'number' || rating <= 0) continue
+    const keywords = entry.input.themeKeywords ?? []
+    for (const keyword of keywords) {
+      const existing = acc.get(keyword) ?? { sum: 0, count: 0 }
+      existing.sum += rating
+      existing.count += 1
+      acc.set(keyword, existing)
+    }
+  }
+  const result = new Map<string, KeywordScore>()
+  for (const [keyword, { sum, count }] of acc) {
+    result.set(keyword, { sampleCount: count, averageRating: sum / count })
+  }
+  return result
+}
+
+/** 平均評価 × log2(1+件数) の暗黙スコア順に並び替える（同点は元の順序を維持） */
+export function rankWordsByScore(words: string[], scores: Map<string, KeywordScore>): string[] {
+  return words
+    .map((word, index) => {
+      const score = scores.get(word)
+      const implicit = score ? score.averageRating * Math.log2(1 + score.sampleCount) : 0
+      return { word, index, implicit }
+    })
+    .sort((a, b) => (b.implicit !== a.implicit ? b.implicit - a.implicit : a.index - b.index))
+    .map((entry) => entry.word)
+}
+
+/**
+ * ジャンル・ムード・雰囲気の選択状態に応じたキーワード候補グループを合成する。
+ * 同じ語が複数グループに現れる場合は最初のグループにのみ残す。
+ * scores を渡すと各グループ内を評価順に並び替える（キーワード提案の自己進化）。
+ */
+export function buildKeywordSuggestions(
+  args: BuildSuggestionArgs,
+  scores: Map<string, KeywordScore> = new Map(),
+): KeywordSuggestionGroup[] {
+  const groups: KeywordSuggestionGroup[] = []
+
+  const bank = args.genreKey ? getKeywordBankForGenre(args.genreKey) : null
+  if (bank) {
+    for (const category of args.genreCategories ?? DEFAULT_GENRE_CATEGORIES) {
+      const words = bank[category]
+      if (words && words.length > 0) {
+        groups.push({ id: `genre:${category}`, label: KEYWORD_SUGGESTION_CATEGORY_LABELS[category], words })
+      }
+    }
+  }
+
+  const learnedFor = (contextType: 'mood' | 'atmosphere', contextKey: string): string[] =>
+    (args.learnedAssociations ?? [])
+      .filter((a) => a.contextType === contextType && a.contextKey === contextKey)
+      .map((a) => a.word)
+
+  if (args.moodKey) {
+    const words = [...(selectionKeywords.moods[args.moodKey] ?? []), ...learnedFor('mood', args.moodKey)]
+    if (words.length > 0) {
+      groups.push({ id: `mood:${args.moodKey}`, label: `ムード「${moodLabel(args.moodKey)}」の連想語`, words })
+    }
+  }
+
+  for (const atmosphereKey of args.atmosphereKeys ?? []) {
+    const words = [
+      ...(selectionKeywords.atmospheres[atmosphereKey] ?? []),
+      ...learnedFor('atmosphere', atmosphereKey),
+    ]
+    if (words.length > 0) {
+      groups.push({
+        id: `atmosphere:${atmosphereKey}`,
+        label: `雰囲気「${atmosphereLabel(atmosphereKey)}」の連想語`,
+        words,
+      })
+    }
+  }
+
+  if (args.discoveredWords && args.discoveredWords.length > 0) {
+    groups.push({ id: 'discovered', label: '自動発見された語（あなたの高評価から学習）', words: args.discoveredWords })
+  }
+
+  // グループ間の重複語を除去（先勝ち）し、降格済みの語を除いた上で、評価スコア順に並び替え
+  const demoted = new Set(args.demotedWords ?? [])
+  const seen = new Set<string>()
+  return groups
+    .map((group) => {
+      const deduped = group.words.filter((word) => {
+        if (demoted.has(word)) return false
+        if (seen.has(word)) return false
+        seen.add(word)
+        return true
+      })
+      return { ...group, words: rankWordsByScore(deduped, scores) }
+    })
+    .filter((group) => group.words.length > 0)
+}
