@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeTempoHintDiff, mineTempoCandidates } from './tempoLearning'
-import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../../types/persistence'
+import type { CompositionHistoryEntry, LyricsPromptHistoryEntry, ClaudeCompositionHistoryEntry } from '../../types/persistence'
 
 function compositionEntry(genreKey: string, tempo: number | undefined, rating: number | undefined): CompositionHistoryEntry {
   return {
@@ -22,6 +22,22 @@ function lyricsEntry(genreKey: string, rating: number): LyricsPromptHistoryEntry
     tags: [],
     rating,
     input: { genreKey, atmosphereKeys: [], themeKeywords: [], languageKey: 'ja' },
+    variants: [],
+  }
+}
+
+function claudeCompositionEntry(
+  genreKey: string,
+  tempo: number | undefined,
+  rating: number | undefined,
+): ClaudeCompositionHistoryEntry {
+  return {
+    id: crypto.randomUUID(),
+    kind: 'claudeComposition',
+    createdAt: new Date().toISOString(),
+    tags: [],
+    rating,
+    input: { genreKey, instrumentKeys: [], atmosphereKeys: [], tempo },
     variants: [],
   }
 }
@@ -70,6 +86,14 @@ describe('mineTempoCandidates', () => {
       ['jrock'],
     )
     expect(candidates).toEqual([])
+  })
+
+  it('also mines tempo candidates from claudeComposition entries (shares the composition input shape)', () => {
+    const candidates = mineTempoCandidates([
+      claudeCompositionEntry('jrock', 128, 5),
+      claudeCompositionEntry('jrock', 128, 4),
+    ])
+    expect(candidates).toEqual([{ genreKey: 'jrock', tempo: 128, sampleCount: 2, averageRating: 4.5 }])
   })
 
   it('keeps different genres separate', () => {

@@ -74,6 +74,37 @@ describe('runExecutorCycle', () => {
     }
   })
 
+  it('does not let a genre with many duplicate override entries dominate over one with a single entry', () => {
+    // 同じジャンルへの承認が何度も積み重なった場合(例: 自動改善ループが同じ候補を繰り返し提案した場合)、
+    // 単純に配列からランダムに選ぶと件数の多いジャンルが不当に選ばれやすくなるバグがあった。
+    // 重複を除去していれば、両ジャンルはほぼ互角の確率で選ばれるはず。
+    const overrides: TemplateOverride[] = [
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `dup-${i}`,
+        category: 'genreKey' as const,
+        key: 'jrock',
+        boost: 5,
+        reason: 'test',
+        createdAt: '',
+      })),
+      { id: 'single', category: 'genreKey', key: 'city_pop', boost: 5, reason: 'test', createdAt: '' },
+    ]
+    let jrockCount = 0
+    let cityPopCount = 0
+    const runs = 400
+    for (let i = 0; i < runs; i++) {
+      const [variant] = runExecutorCycle(1, overrides)
+      if (variant.genreKey === 'jrock') jrockCount++
+      if (variant.genreKey === 'city_pop') cityPopCount++
+    }
+    // 完全な均等でなくても構わないが、20件 vs 1件という水増しの偏りが出ないことを確認する
+    expect(jrockCount).toBeGreaterThan(0)
+    expect(cityPopCount).toBeGreaterThan(0)
+    const ratio = jrockCount / cityPopCount
+    expect(ratio).toBeGreaterThan(0.4)
+    expect(ratio).toBeLessThan(2.5)
+  })
+
   it('ignores overrides for categories other than genreKey when weighting genre selection', () => {
     const overrides: TemplateOverride[] = [
       { id: 'o1', category: 'moodKey', key: 'chill', boost: 100, reason: 'test', createdAt: '' },

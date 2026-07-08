@@ -1,5 +1,6 @@
 import type { GenerationInput, GeneratedVariant } from './generation'
 import type { LyricsPromptInput, LyricsPromptVariant } from './lyricsPrompt'
+import type { ClaudeCompositionInput, ClaudeCompositionVariant } from './claudeComposition'
 
 interface BaseHistoryEntry {
   id: string
@@ -25,7 +26,17 @@ export interface LyricsPromptHistoryEntry extends BaseHistoryEntry {
   lyricsQualityRating?: number
 }
 
-export type HistoryEntry = CompositionHistoryEntry | LyricsPromptHistoryEntry
+export interface ClaudeCompositionHistoryEntry extends BaseHistoryEntry {
+  kind: 'claudeComposition'
+  input: ClaudeCompositionInput
+  variants: ClaudeCompositionVariant[]
+  /** Claudeが実際に書いた、Suno向け作曲プロンプト本文(ユーザーが後から貼り付けたもの) */
+  actualCompositionPromptText?: string
+  /** 実際に得られた作曲プロンプトそのものの評価(指示文の出来とは別軸)。自己学習ループはこちらを優先する。 */
+  compositionPromptQualityRating?: number
+}
+
+export type HistoryEntry = CompositionHistoryEntry | LyricsPromptHistoryEntry | ClaudeCompositionHistoryEntry
 
 export interface PresetEntry {
   id: string

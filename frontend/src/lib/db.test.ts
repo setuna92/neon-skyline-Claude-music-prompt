@@ -556,6 +556,22 @@ describe('template overrides (self-learning approvals)', () => {
     await db.removeTemplateOverride(override.id)
     expect(await db.getTemplateOverrides()).toEqual([])
   })
+
+  it('updates an existing override in place instead of adding a duplicate for the same category+key', async () => {
+    const db = await freshDb()
+    await db.unlockWithPassphrase('test-passphrase')
+
+    const first = await db.addTemplateOverride({ category: 'genreKey', key: 'jrock', boost: 5, reason: 'first' })
+    const second = await db.addTemplateOverride({ category: 'genreKey', key: 'jrock', boost: 5, reason: 'second' })
+
+    // 重複して積み上がると、承認回数の多いジャンルが自己強化的に選ばれやすくなるバグの原因になるため、
+    // 同じカテゴリ・キーは1件だけ保持し、内容を更新する
+    const overrides = await db.getTemplateOverrides()
+    expect(overrides).toHaveLength(1)
+    expect(overrides[0].id).toBe(first.id)
+    expect(second.id).toBe(first.id)
+    expect(overrides[0].reason).toBe('second')
+  })
 })
 
 describe('keyword associations (context learning)', () => {

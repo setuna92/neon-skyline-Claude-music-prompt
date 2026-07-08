@@ -1,5 +1,12 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { HistoryEntry, LyricsPromptHistoryEntry, PresetEntry, EncryptedPayload, ConsentRecord } from '../types/persistence'
+import type {
+  HistoryEntry,
+  LyricsPromptHistoryEntry,
+  ClaudeCompositionHistoryEntry,
+  PresetEntry,
+  EncryptedPayload,
+  ConsentRecord,
+} from '../types/persistence'
 import type { GenerationInput } from '../types/generation'
 import type { ImportedPrompt } from '../types/promptLibrary'
 import type { DemotedKeyword, DiscoveredKeyword, KeywordAssociation, TemplateOverride, TempoHint } from '../types/learning'
@@ -238,12 +245,17 @@ export async function getTemplateOverrides(): Promise<TemplateOverride[]> {
 export async function addTemplateOverride(override: Omit<TemplateOverride, 'id' | 'createdAt'>): Promise<TemplateOverride> {
   const db = await getDB()
   const current = await getTemplateOverrides()
+  // 同じカテゴリ・キーへのブーストは追加せず更新する。追加し続けると同じジャンルの重複が
+  // 積み重なり、executor.tsのpickWeightedGenreKeyのような「配列から均等ランダムに選ぶ」処理で
+  // 承認回数の多いジャンルが不当に選ばれやすくなる(自己強化的な偏り)ため。
+  const existingIndex = current.findIndex((o) => o.category === override.category && o.key === override.key)
   const full: TemplateOverride = {
     ...override,
-    id: crypto.randomUUID(),
+    id: existingIndex >= 0 ? current[existingIndex].id : crypto.randomUUID(),
     createdAt: new Date().toISOString(),
   }
-  await db.put('settings', { key: TEMPLATE_OVERRIDES_SETTINGS_KEY, value: [...current, full] })
+  const next = existingIndex >= 0 ? current.map((o, i) => (i === existingIndex ? full : o)) : [...current, full]
+  await db.put('settings', { key: TEMPLATE_OVERRIDES_SETTINGS_KEY, value: next })
   notifyDataChange()
   return full
 }
@@ -548,6 +560,39 @@ export async function updateLyricsQuality(
     ...patch,
     actualLyricsText:
       patch.actualLyricsText !== undefined ? maskPIIDeep(patch.actualLyricsText) : existing.actualLyricsText,
+  }
+  const payload = await encryptJSON(key, updated)
+  await db.put('history', { id: updated.id, createdAt: updated.createdAt, payload })
+  invalidateHistoryCache()
+  return updated
+}
+
+/**
+ * Claude作曲履歴に「実際にClaudeが書いた作曲プロンプト」とその評価を記録する。
+ * 指示文の見た目ではなく最終成果物の質で自己学習が動くようにするための専用エントリポイント。
+ * (updateLyricsQualityの作曲版)
+ */
+export async function updateClaudeCompositionQuality(
+  id: string,
+  patch: { actualCompositionPromptText?: string; compositionPromptQualityRating?: number },
+): Promise<ClaudeCompositionHistoryEntry> {
+  const key = getActiveKey()
+  const db = await getDB()
+  const record = await db.get('history', id)
+  if (!record) throw new Error(`履歴が見つかりません: ${id}`)
+
+  const existing = normalizeHistoryEntry(await decryptJSON<HistoryEntry>(key, record.payload))
+  if (existing.kind !== 'claudeComposition') {
+    throw new Error('作曲プロンプトの質の記録はClaude作曲の履歴にのみ設定できます')
+  }
+
+  const updated: ClaudeCompositionHistoryEntry = {
+    ...existing,
+    ...patch,
+    actualCompositionPromptText:
+      patch.actualCompositionPromptText !== undefined
+        ? maskPIIDeep(patch.actualCompositionPromptText)
+        : existing.actualCompositionPromptText,
   }
   const payload = await encryptJSON(key, updated)
   await db.put('history', { id: updated.id, createdAt: updated.createdAt, payload })

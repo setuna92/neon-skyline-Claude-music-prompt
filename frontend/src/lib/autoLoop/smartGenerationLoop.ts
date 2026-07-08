@@ -4,20 +4,24 @@ import { generateVariants } from '../promptGenerator'
 import { generateLyricsPromptVariants } from '../lyricsPromptGenerator'
 import { deriveLyricsInputFromComposition, pickSmartCompositionInput } from '../smartSelect'
 import { addHistoryEntry, getAllHistory, updateHistoryEntry } from '../db'
+import { SMART_LOOP_TAG } from '../learning/trainingData'
 
 const templates = templatesData as PromptTemplates
 
 /** 自動選択ループが作った履歴に付けるタグ。手動で作った履歴と区別できるようにする。 */
-export const SMART_LOOP_TAG = '自動選択ループ'
+export { SMART_LOOP_TAG }
 
 export interface SmartLoopConfig {
   cycleDelayMs: number
   maxCyclesPerSession: number
+  /** 指定した場合、これらのジャンルの中からのみ生成する(空/未指定なら全ジャンルからバランス良く生成) */
+  allowedGenreKeys: string[]
 }
 
 export const DEFAULT_SMART_LOOP_CONFIG: SmartLoopConfig = {
   cycleDelayMs: 8000,
   maxCyclesPerSession: 20,
+  allowedGenreKeys: [],
 }
 
 export type SmartLoopStatus = 'idle' | 'running' | 'stopped'
@@ -66,6 +70,8 @@ export class SmartGenerationLoop {
   private cycleIndex = 0
   private lastStopReason: string | undefined
   private recentLog: SmartLoopCycleResult[] = []
+  // 直前のサイクルで選んだジャンル/ムード。次のサイクルで同じ組み合わせが連続しないようにするため保持する
+  private lastPick: { genreKey: string; moodKey?: string } | null = null
   private readonly listeners = new Set<Listener>()
 
   subscribe(listener: Listener): () => void {
@@ -97,6 +103,7 @@ export class SmartGenerationLoop {
     this.cycleIndex = 0
     this.lastStopReason = undefined
     this.recentLog = []
+    this.lastPick = null
     this.emit(null)
     void this.runLoop()
   }
@@ -113,7 +120,12 @@ export class SmartGenerationLoop {
 
     const history = await getAllHistory().catch(() => [])
 
-    const composition = pickSmartCompositionInput(history)
+    const composition = pickSmartCompositionInput(history, {
+      allowedGenreKeys: this.config.allowedGenreKeys,
+      avoidGenreKey: this.lastPick?.genreKey,
+      avoidMoodKey: this.lastPick?.moodKey,
+    })
+    this.lastPick = { genreKey: composition.input.genreKey, moodKey: composition.input.moodKey }
     const compositionResult = generateVariants(composition.input)
     const compositionEntry = await addHistoryEntry({
       kind: 'composition',

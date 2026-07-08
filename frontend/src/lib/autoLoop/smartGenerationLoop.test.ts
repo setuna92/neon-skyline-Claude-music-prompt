@@ -108,6 +108,29 @@ describe('SmartGenerationLoop', () => {
     }
   })
 
+  it('only generates within allowedGenreKeys when configured', async () => {
+    const db = await freshDb()
+    await db.unlockWithPassphrase('test-passphrase')
+    const { SmartGenerationLoop } = await import('./smartGenerationLoop')
+
+    const loop = new SmartGenerationLoop()
+    await new Promise<void>((resolve) => {
+      const unsubscribe = loop.subscribe(({ metrics }) => {
+        if (metrics.status === 'stopped') {
+          unsubscribe()
+          resolve()
+        }
+      })
+      void loop.start({ cycleDelayMs: 1, maxCyclesPerSession: 5, allowedGenreKeys: ['city_pop'] })
+    })
+
+    const history = await db.getAllHistory()
+    expect(history.length).toBeGreaterThan(0)
+    for (const entry of history) {
+      expect(entry.input.genreKey).toBe('city_pop')
+    }
+  })
+
   it('accumulates multiple cycles worth of history (4 entries after 2 cycles)', async () => {
     const db = await freshDb()
     await db.unlockWithPassphrase('test-passphrase')

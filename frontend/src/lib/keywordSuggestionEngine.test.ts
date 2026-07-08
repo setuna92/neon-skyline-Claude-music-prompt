@@ -7,6 +7,7 @@ import {
 import type { KeywordScore } from './keywordSuggestionEngine'
 import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
 import type { KeywordAssociation } from '../types/learning'
+import { SMART_LOOP_TAG } from './learning/trainingData'
 
 function compositionEntry(themeKeywords: string[], rating?: number): CompositionHistoryEntry {
   return {
@@ -54,6 +55,13 @@ describe('scoreKeywordsFromHistory', () => {
     entry.lyricsQualityRating = 5
     const scores = scoreKeywordsFromHistory([entry])
     expect(scores.get('夏')).toEqual({ sampleCount: 1, averageRating: 5 })
+  })
+
+  it('excludes SmartGenerationLoop auto-rated entries so the loop cannot reinforce its own guesses', () => {
+    const entry = compositionEntry(['夏'], 5)
+    entry.tags = [SMART_LOOP_TAG]
+    const scores = scoreKeywordsFromHistory([entry])
+    expect(scores.size).toBe(0)
   })
 })
 

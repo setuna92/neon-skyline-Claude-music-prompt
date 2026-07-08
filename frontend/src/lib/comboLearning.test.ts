@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeFavoriteCompositionCombos, computeFavoriteLyricsCombos } from './comboLearning'
+import { SMART_LOOP_TAG } from './learning/trainingData'
 import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
 
 function compositionEntry(
@@ -99,6 +100,13 @@ describe('computeFavoriteCompositionCombos', () => {
       compositionEntry({ tempo: 140 }, 5, '2026-01-02T00:00:00.000Z'),
     ])
     expect(combos).toHaveLength(2)
+  })
+
+  it('excludes SmartGenerationLoop auto-rated entries so the loop cannot reinforce its own guesses', () => {
+    const autoEntry = compositionEntry({ moodKey: 'party' }, 5, '2026-01-01T00:00:00.000Z')
+    autoEntry.tags = [SMART_LOOP_TAG]
+    const combos = computeFavoriteCompositionCombos([autoEntry])
+    expect(combos).toEqual([])
   })
 })
 

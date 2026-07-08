@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { GenerationResult } from './types/generation'
 import type { LyricsPromptResult, LyricsPromptSeed } from './types/lyricsPrompt'
+import type { ClaudeCompositionResult } from './types/claudeComposition'
 import { PassphraseGate } from './components/PassphraseGate'
 import { GenerationForm } from './components/GenerationForm'
 import { GenerationResultPanel } from './components/GenerationResultPanel'
 import { LyricsPromptForm } from './components/LyricsPromptForm'
 import { LyricsPromptResultPanel } from './components/LyricsPromptResultPanel'
+import { ClaudeCompositionForm } from './components/ClaudeCompositionForm'
+import { ClaudeCompositionResultPanel } from './components/ClaudeCompositionResultPanel'
 import { HistoryPanel } from './components/HistoryPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { AutoLoopPanel } from './components/AutoLoopPanel'
@@ -13,7 +16,7 @@ import { SmartGenerationPanel } from './components/SmartGenerationPanel'
 import { getSmartGenerationLoop } from './lib/autoLoop/smartGenerationSingleton'
 import { getSmartLoopAutoStart } from './lib/db'
 
-type Tab = 'generate' | 'lyrics' | 'autoloop' | 'history' | 'settings'
+type Tab = 'generate' | 'lyrics' | 'claudeComposition' | 'autoloop' | 'history' | 'settings'
 
 function App() {
   const [unlocked, setUnlocked] = useState(false)
@@ -26,6 +29,10 @@ function App() {
     result: LyricsPromptResult
   } | null>(null)
   const [lyricsSeed, setLyricsSeed] = useState<LyricsPromptSeed | null>(null)
+  const [lastClaudeComposition, setLastClaudeComposition] = useState<{
+    historyEntryId: string
+    result: ClaudeCompositionResult
+  } | null>(null)
 
   useEffect(() => {
     if (!unlocked) return
@@ -48,6 +55,7 @@ function App() {
     setLastGeneration(null)
     setLastLyricsPrompt(null)
     setLyricsSeed(null)
+    setLastClaudeComposition(null)
     setTab('generate')
   }
 
@@ -70,6 +78,7 @@ function App() {
           [
             { id: 'generate', label: '作曲' },
             { id: 'lyrics', label: '歌詞プロンプト' },
+            { id: 'claudeComposition', label: 'Claude作曲' },
             { id: 'autoloop', label: '自動ループ' },
             { id: 'history', label: '履歴' },
             { id: 'settings', label: '設定' },
@@ -114,6 +123,19 @@ function App() {
               <LyricsPromptResultPanel
                 historyEntryId={lastLyricsPrompt.historyEntryId}
                 result={lastLyricsPrompt.result}
+              />
+            )}
+          </>
+        )}
+        {tab === 'claudeComposition' && (
+          <>
+            <ClaudeCompositionForm
+              onGenerated={(historyEntryId, result) => setLastClaudeComposition({ historyEntryId, result })}
+            />
+            {lastClaudeComposition && (
+              <ClaudeCompositionResultPanel
+                historyEntryId={lastClaudeComposition.historyEntryId}
+                result={lastClaudeComposition.result}
               />
             )}
           </>

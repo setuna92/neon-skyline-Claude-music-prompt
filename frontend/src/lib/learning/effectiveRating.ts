@@ -11,5 +11,8 @@ export function effectiveRating(entry: HistoryEntry): number | undefined {
   if (entry.kind === 'lyricsPrompt' && typeof entry.lyricsQualityRating === 'number') {
     return entry.lyricsQualityRating
   }
+  if (entry.kind === 'claudeComposition' && typeof entry.compositionPromptQualityRating === 'number') {
+    return entry.compositionPromptQualityRating
+  }
   return entry.rating
 }

@@ -70,6 +70,8 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
   const [busy, setBusy] = useState(false)
   // busy(state)は再レンダー後まで最新値を読めないため、同期的な連打(2重送信)を防ぐのに使う
   const busyRef = useRef(false)
+  // 直前に自動選択した結果を覚えておき、次に押した時に同じ組み合わせを避けるために使う
+  const lastAutoSelectRef = useRef<{ genreKey: string; moodKey?: string } | null>(null)
   const [genome, setGenome] = useState<TextGenome>(EMPTY_GENOME)
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
   const [atmosphereOpen, setAtmosphereOpen] = useState((seed?.atmosphereKeys.length ?? 0) > 0)
@@ -189,7 +191,11 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     setError(null)
     setGenreFilter('')
     const history = await getAllHistory().catch(() => [])
-    const { input: picked } = pickSmartLyricsInput(history)
+    const { input: picked } = pickSmartLyricsInput(history, {
+      avoidGenreKey: lastAutoSelectRef.current?.genreKey,
+      avoidMoodKey: lastAutoSelectRef.current?.moodKey,
+    })
+    lastAutoSelectRef.current = { genreKey: picked.genreKey, moodKey: picked.moodKey }
     setGenreKey(picked.genreKey)
     setMoodKey(picked.moodKey)
     setVocalTypeKey(picked.vocalTypeKey)

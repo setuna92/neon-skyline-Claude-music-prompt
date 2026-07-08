@@ -38,7 +38,10 @@ function pickRandomSubset<T>(list: T[], max: number): T[] {
 }
 
 function pickWeightedGenreKey(overrides: TemplateOverride[]): string {
-  const boosted = overrides.filter((o) => o.category === 'genreKey' && o.boost > 0).map((o) => o.key)
+  // 同じジャンルへのブーストが複数件あっても重複排除する。重複したまま pickRandom に渡すと、
+  // 承認回数が多いジャンルほど配列内で水増しされ、意図せず毎回そのジャンルばかり選ばれる
+  // (自己強化的な偏り)原因になるため。
+  const boosted = [...new Set(overrides.filter((o) => o.category === 'genreKey' && o.boost > 0).map((o) => o.key))]
   // 承認済みブーストがあるジャンルは50%の確率で優先的に選ぶ（既存の自己学習ループとの一貫性）
   if (boosted.length > 0 && Math.random() < 0.5) {
     return pickRandom(boosted)

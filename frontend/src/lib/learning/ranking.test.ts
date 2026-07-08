@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeScoresByCategory, rankByScore } from './ranking'
-import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../../types/persistence'
+import { SMART_LOOP_TAG } from './trainingData'
+import type { CompositionHistoryEntry, LyricsPromptHistoryEntry, ClaudeCompositionHistoryEntry } from '../../types/persistence'
 
 let idCounter = 0
 function nextId(): string {
@@ -30,6 +31,18 @@ function lyricsEntry(overrides: Partial<LyricsPromptHistoryEntry> = {}): LyricsP
     createdAt: new Date().toISOString(),
     tags: [],
     input: { genreKey: 'city_pop', atmosphereKeys: [], themeKeywords: ['夏'], languageKey: 'ja' },
+    variants: [{ variantId: 'v1', styleId: 'standard', styleLabel: '標準', promptText: 'x' }],
+    ...overrides,
+  }
+}
+
+function claudeCompositionEntry(overrides: Partial<ClaudeCompositionHistoryEntry> = {}): ClaudeCompositionHistoryEntry {
+  return {
+    id: nextId(),
+    kind: 'claudeComposition',
+    createdAt: new Date().toISOString(),
+    tags: [],
+    input: { genreKey: 'jrock', instrumentKeys: ['synth'], atmosphereKeys: [] },
     variants: [{ variantId: 'v1', styleId: 'standard', styleLabel: '標準', promptText: 'x' }],
     ...overrides,
   }
@@ -71,6 +84,12 @@ describe('computeScoresByCategory', () => {
     expect(scores.instrumentKeys.size).toBe(1)
   })
 
+  it('also aggregates instrumentKeys for claudeComposition entries (shares the composition input shape)', () => {
+    const entries = [claudeCompositionEntry({ rating: 4, input: { genreKey: 'jrock', instrumentKeys: ['synth'], atmosphereKeys: [] } })]
+    const scores = computeScoresByCategory(entries)
+    expect(scores.instrumentKeys.get('synth')).toEqual({ sampleCount: 1, averageRating: 4 })
+  })
+
   it('only credits variantStyle when selectedVariantId matches an actual variant', () => {
     const withSelection = compositionEntry({ rating: 5, selectedVariantId: 'v2' })
     const withoutSelection = compositionEntry({ rating: 5, selectedVariantId: undefined })
@@ -105,6 +124,16 @@ describe('computeScoresByCategory', () => {
     })
     const scores = computeScoresByCategory([entry])
     expect(scores.genreKey.get('city_pop')).toEqual({ sampleCount: 1, averageRating: 5 })
+  })
+
+  it('excludes SmartGenerationLoop auto-rated entries so the loop cannot reinforce its own guesses', () => {
+    const entry = compositionEntry({
+      rating: 5,
+      tags: [SMART_LOOP_TAG],
+      input: { genreKey: 'jrock', instrumentKeys: [], atmosphereKeys: [] },
+    })
+    const scores = computeScoresByCategory([entry])
+    expect(scores.genreKey.size).toBe(0)
   })
 })
 

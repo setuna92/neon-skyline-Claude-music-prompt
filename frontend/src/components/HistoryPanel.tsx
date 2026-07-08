@@ -11,8 +11,14 @@ function genreLabel(genreKey: string): string {
   return templates.genres.find((g) => g.key === genreKey)?.label ?? genreKey
 }
 
+const KIND_LABELS: Record<HistoryEntry['kind'], string> = {
+  composition: '作曲プロンプト',
+  lyricsPrompt: '歌詞プロンプト',
+  claudeComposition: 'Claude作曲プロンプト',
+}
+
 function kindLabel(kind: HistoryEntry['kind']): string {
-  return kind === 'lyricsPrompt' ? '歌詞プロンプト' : '作曲プロンプト'
+  return KIND_LABELS[kind]
 }
 
 function variantPreview(variant: HistoryEntry['variants'][number]): string {
@@ -51,9 +57,9 @@ export function HistoryPanel() {
       if (minRating > 0 && (entry.rating ?? 0) < minRating) return false
       if (!q) return true
       const variantTexts =
-        entry.kind === 'lyricsPrompt'
-          ? entry.variants.map((v) => v.promptText)
-          : entry.variants.flatMap((v) => [v.englishPrompt, v.japanesePrompt])
+        entry.kind === 'composition'
+          ? entry.variants.flatMap((v) => [v.englishPrompt, v.japanesePrompt])
+          : entry.variants.map((v) => v.promptText)
       const haystack = [genreLabel(entry.input.genreKey), ...entry.tags, ...variantTexts].join(' ').toLowerCase()
       return haystack.includes(q)
     })
@@ -200,6 +206,19 @@ export function HistoryPanel() {
                         )}
                       </div>
                       <p className="text-xs text-text-secondary whitespace-pre-line">{entry.actualLyricsText}</p>
+                    </div>
+                  )}
+                  {entry.kind === 'claudeComposition' && entry.actualCompositionPromptText && (
+                    <div className="bg-dark-lighter rounded-lg p-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[11px] text-neon-purple">実際に得られた作曲プロンプト</p>
+                        {typeof entry.compositionPromptQualityRating === 'number' && (
+                          <StarRating value={entry.compositionPromptQualityRating} size="sm" />
+                        )}
+                      </div>
+                      <p className="text-xs text-text-secondary whitespace-pre-line">
+                        {entry.actualCompositionPromptText}
+                      </p>
                     </div>
                   )}
                   <button
