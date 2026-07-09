@@ -74,4 +74,27 @@ describe('generateClaudeCompositionPromptVariants', () => {
     const standard = result.variants.find((v) => v.styleId === 'standard')
     expect(standard?.promptText).toMatch(/ボーカルなし|インストゥルメンタル/)
   })
+
+  it('tells Claude to write the Suno prompt directly right now, not ask how, in every style', () => {
+    const result = generateClaudeCompositionPromptVariants(BASE_INPUT)
+    for (const variant of result.variants) {
+      expect(variant.promptText).toMatch(/今この場で/)
+      expect(variant.promptText).toMatch(/相談|確認/)
+    }
+  })
+
+  it('tells Claude to aim for its best-ever composition prompt every time, in every style', () => {
+    const result = generateClaudeCompositionPromptVariants(BASE_INPUT)
+    for (const variant of result.variants) {
+      expect(variant.promptText).toContain('一番')
+    }
+  })
+
+  it('pushes for concrete texture/dynamics over generic AI-music adjectives, and a memorable hook, in every style', () => {
+    const result = generateClaudeCompositionPromptVariants(BASE_INPUT)
+    for (const variant of result.variants) {
+      expect(variant.promptText).toMatch(/フック/)
+      expect(variant.promptText).toMatch(/ありきたりなAI音楽/)
+    }
+  })
 })

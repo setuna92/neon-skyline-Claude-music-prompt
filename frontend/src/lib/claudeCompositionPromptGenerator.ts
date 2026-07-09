@@ -75,12 +75,17 @@ function conditionLines(r: ResolvedInput): string[] {
 function buildStandard(r: ResolvedInput): string {
   const lines = [
     'あなたはSuno(AI作曲サービス)向けの高品質な作曲プロンプトを書く専門家です。',
-    '以下の条件を満たす、Sunoにそのまま貼り付けられる英語の作曲プロンプトを1つ書いてください。',
+    '以下の条件を満たす、Sunoにそのまま貼り付けられる英語の作曲プロンプトを、今この場で1つ書き切ってください。相談や確認は不要です。',
     '',
     ...conditionLines(r),
     '',
     '作成の指針:',
+    '・毎回、これまでに書いた中で一番の一曲になるつもりで、全力を尽くしてください。',
     '・ジャンル・楽器・雰囲気を表す具体的な英単語やプロダクションタグを効果的に使ってください。',
+    '・「epic」「emotional」のような抽象的な形容詞だけで終わらせず、質感やダイナミクスまで具体的に描写してください(例: "shimmering arpeggiated synths building into a wall-of-sound chorus")。',
+    '・抑えたヴァースから爆発的なサビ・ドロップへ向かう静と動のコントラストを明記し、単調な展開にならないようにしてください。',
+    '・一度聴いたら耳に残るフック(メロディ・リフ・コーラスの型)を意識した描写を含めてください。',
+    '・「uplifting and inspiring」のようなありきたりなAI音楽っぽい表現だけで終わらせず、このジャンル・条件ならではの具体的な質感を選んでください。',
     '・曲の展開(イントロ→展開→サビ相当の盛り上がり等)が伝わるようにしてください。',
     '・冗長な説明文ではなく、Sunoが解釈しやすい簡潔で密度の高い表現にしてください。',
     '・出力は最終的な英語プロンプト文のみとし、前置きや解説、日本語訳は書かないでください。',
@@ -92,7 +97,7 @@ function buildStandard(r: ResolvedInput): string {
 
 function buildPoetic(r: ResolvedInput): string {
   const parts: string[] = [
-    `Suno(AI作曲サービス)に渡す作曲プロンプトを書いてください。曲のイメージは${r.genre.label}です。`,
+    `Suno(AI作曲サービス)に渡す作曲プロンプトを、今この場で書き切ってください。相談や確認は不要です。曲のイメージは${r.genre.label}です。`,
   ]
   if (r.mood) parts.push(`${r.mood.label}を漂わせる情景を思い浮かべてください。`)
   if (r.tempo) parts.push(`鼓動のようなBPM${r.tempo}のテンポで進んでください。`)
@@ -105,6 +110,10 @@ function buildPoetic(r: ResolvedInput): string {
   if (r.structure) parts.push(`${r.structure.label}のような展開で物語を運んでください。`)
   if (r.atmospheres.length) parts.push(`空気そのものが${r.atmospheres.map((a) => a.label).join('、')}を感じさせるようにしてください。`)
   if (r.themeKeywords.length) parts.push(`${r.themeKeywords.join('、')}の面影を音楽に込めてください。`)
+  parts.push('毎回、これまでに書いた中で一番の一曲になるつもりで、全力を尽くしてください。')
+  parts.push('「epic」「emotional」だけで終わる抽象的な形容詞ではなく、質感やダイナミクスが伝わる具体的な描写を選んでください。')
+  parts.push('抑えた場面から爆発的な盛り上がりへと向かう静と動のコントラストを大切にし、一度聴いたら耳に残るフックを意識してください。')
+  parts.push('ありきたりなAI音楽っぽい表現は避け、このジャンルならではの質感を選んでください。')
   parts.push(
     'この情景を踏まえた上で、実際にSunoに貼り付けて使える、簡潔で密度の高い英語の作曲プロンプトを1つ書いてください。',
   )
@@ -126,7 +135,9 @@ function buildMinimal(r: ResolvedInput): string {
     r.themeKeywords.length ? `テーマ:${r.themeKeywords.join('/')}` : undefined,
   ].filter((p): p is string => Boolean(p))
   return (
-    `${parts.join('／')} の条件で、Sunoにそのまま貼り付けられる英語の作曲プロンプトを1つ書いてください。` +
+    `${parts.join('／')} の条件で、Sunoにそのまま貼り付けられる英語の作曲プロンプトを、今この場で1つ書き切ってください。相談や確認は不要です。` +
+    '耳に残るフックと静と動のコントラストを意識し、ありきたりなAI音楽っぽい表現は避けてください。' +
+    '毎回、これまでに書いた中で一番の一曲になるつもりで、全力を尽くしてください。' +
     '簡潔で密度の高い表現にしてください。出力は最終的な英語プロンプト文のみとし、前置きや解説、日本語訳は書かないでください。'
   )
 }

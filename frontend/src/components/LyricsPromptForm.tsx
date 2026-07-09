@@ -5,19 +5,22 @@ import type { LyricsPromptInput, LyricsPromptSeed } from '../types/lyricsPrompt'
 import type { ImportedPrompt } from '../types/promptLibrary'
 import { EMPTY_GENOME, genomeFromMutations } from '../types/textGenome'
 import type { TextGenome } from '../types/textGenome'
-import { generateLyricsPromptVariants } from '../lib/lyricsPromptGenerator'
+import { generateLyricsPromptVariants, generateSynopsisPrompt } from '../lib/lyricsPromptGenerator'
 import { DEFAULT_GENRE_CATEGORIES, buildKeywordSuggestions, splitAutoSelectedKeywords } from '../lib/keywordSuggestionEngine'
 import { pickSmartLyricsInput } from '../lib/smartSelect'
-import { addHistoryEntry, getAllHistory, getTextMutations } from '../lib/db'
+import { addHistoryEntry, getAllHistory, getClaudeApiKey, getClaudeModel, getTextMutations } from '../lib/db'
+import { callClaude } from '../lib/claudeClient'
 import { useOptionRanking } from '../hooks/useOptionRanking'
 import { useKeywordScores } from '../hooks/useKeywordScores'
 import { useDiscoveredKeywords } from '../hooks/useDiscoveredKeywords'
 import { useKeywordAssociations } from '../hooks/useKeywordAssociations'
 import { useDemotedKeywords } from '../hooks/useDemotedKeywords'
 import { useFavoriteLyricsCombos } from '../hooks/useFavoriteCombos'
+import { useClaudeExternalSendConsent } from '../hooks/useClaudeExternalSendConsent'
 import { PromptLibraryPanel } from './PromptLibraryPanel'
 import { KeywordSuggestionPicker } from './KeywordSuggestionPicker'
 import { FavoriteComboPicker } from './FavoriteComboPicker'
+import { ConsentModal } from './ConsentModal'
 
 const templates = templatesData as PromptTemplates
 
@@ -76,6 +79,11 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
   const [atmosphereOpen, setAtmosphereOpen] = useState((seed?.atmosphereKeys.length ?? 0) > 0)
   const [appliedMessage, setAppliedMessage] = useState<string | null>(null)
+  const [synopsisText, setSynopsisText] = useState('')
+  const [synopsisStatus, setSynopsisStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [synopsisError, setSynopsisError] = useState<string | null>(null)
+  const { hasApiKey, consentModalOpen, runWithConsent, handleConsentGranted, handleConsentCancelled } =
+    useClaudeExternalSendConsent()
   const { rank, scoreFor } = useOptionRanking()
 
   useEffect(() => {
@@ -121,6 +129,10 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     setSelectedSuggestions([])
     // 雰囲気は折りたたみの中にあり、閉じたままだとチェックが変わっても見えないため開く
     setAtmosphereOpen(combo.atmosphereKeys.length > 0)
+    // ジャンル・キーワードが変わるため、直前のあらすじは新しい組み合わせに合わなくなる
+    setSynopsisText('')
+    setSynopsisStatus('idle')
+    setSynopsisError(null)
     setAppliedMessage('組み合わせを適用しました。内容を確認して「歌詞プロンプトを生成」を押してください。')
     setTimeout(() => setAppliedMessage(null), 4000)
   }
@@ -157,16 +169,57 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     }
   }
 
+  function currentThemeKeywords(): string[] {
+    const manualKeywords = themeKeywordsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    return [...new Set([...manualKeywords, ...selectedSuggestions])]
+  }
+
+  async function performSynopsisGeneration() {
+    setSynopsisStatus('loading')
+    setSynopsisError(null)
+    try {
+      const apiKey = await getClaudeApiKey()
+      if (!apiKey) throw new Error('Claude APIキーが未設定です。設定タブから登録してください。')
+      const model = await getClaudeModel()
+      const prompt = generateSynopsisPrompt({
+        genreKey,
+        moodKey,
+        atmosphereKeys,
+        themeKeywords: currentThemeKeywords(),
+        languageKey,
+      })
+      const text = await callClaude(prompt, { apiKey, model })
+      setSynopsisText(text.trim())
+      setSynopsisStatus('idle')
+    } catch (err) {
+      setSynopsisStatus('error')
+      setSynopsisError(err instanceof Error ? err.message : 'あらすじの生成に失敗しました')
+    }
+  }
+
+  async function handleGenerateSynopsis() {
+    if (!genreKey) {
+      setSynopsisStatus('error')
+      setSynopsisError('先にジャンルを選択してください')
+      return
+    }
+    if (currentThemeKeywords().length === 0) {
+      setSynopsisStatus('error')
+      setSynopsisError('先にテーマ・キーワードを入力してください')
+      return
+    }
+    setSynopsisError(null)
+    await runWithConsent(performSynopsisGeneration)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     // busy(state)は同期的な連打の間は古い値のままなので、refで即座にガードする
     if (busyRef.current) return
     busyRef.current = true
-    const manualKeywords = themeKeywordsText
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
-    const themeKeywords = [...new Set([...manualKeywords, ...selectedSuggestions])]
 
     await runGeneration({
       genreKey,
@@ -174,9 +227,10 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
       atmosphereKeys,
       vocalTypeKey,
       songStructureKey,
-      themeKeywords,
+      themeKeywords: currentThemeKeywords(),
       languageKey,
       basePromptText: selectedPrompt?.body,
+      synopsis: synopsisText.trim() || undefined,
     })
   }
 
@@ -186,6 +240,10 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     setBusy(true)
     setError(null)
     setGenreFilter('')
+    // ジャンル・キーワードが変わるため、直前のあらすじは新しい組み合わせに合わなくなる
+    setSynopsisText('')
+    setSynopsisStatus('idle')
+    setSynopsisError(null)
     const history = await getAllHistory().catch(() => [])
     const { input: picked } = pickSmartLyricsInput(history, {
       avoidGenreKey: lastAutoSelectRef.current?.genreKey,
@@ -260,6 +318,10 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
               setGenreKey(e.target.value)
               // ジャンルを手動で変えたら、そのジャンル向けの候補選択もリセットする
               setSelectedSuggestions([])
+              // あらすじはジャンル前提で考えられているため、ジャンルが変わったら古いあらすじを破棄する
+              setSynopsisText('')
+              setSynopsisStatus('idle')
+              setSynopsisError(null)
             }}
             className="w-full input-neon px-3 py-2 text-sm"
           >
@@ -293,6 +355,34 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
               />
             </div>
           )}
+        </div>
+
+        <div className="border border-border-neon rounded-lg p-3 space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-1">
+            <span className="text-xs text-text-secondary">① あらすじ（任意・推奨）</span>
+            <button
+              type="button"
+              onClick={() => void handleGenerateSynopsis()}
+              disabled={synopsisStatus === 'loading' || hasApiKey === false}
+              title={hasApiKey === false ? '設定タブでClaude APIキーを登録すると使えます' : undefined}
+              className="text-[11px] px-2 py-1 btn-ghost disabled:opacity-50"
+            >
+              {synopsisStatus === 'loading' ? '考え中…' : 'Claudeにあらすじを考えてもらう'}
+            </button>
+          </div>
+          <p className="text-[11px] text-text-muted">
+            主人公・出来事・結末を先に決めてから②で歌詞を書かせると、ストーリー性のある歌詞になりやすくなります。
+            ジャンルとキーワードを入力してから押してください。自分で書いて貼り付けてもかまいません。
+          </p>
+          {synopsisError && <p className="text-[11px] text-neon-pink">{synopsisError}</p>}
+          <textarea
+            id="lyrics-synopsis"
+            value={synopsisText}
+            onChange={(e) => setSynopsisText(e.target.value)}
+            placeholder={'例:\n主人公: 夜勤明けの若い店員\n出来事: 始発を待つ間、別れた相手からの着信に気づく\n結末: 折り返さずに歩き出し、朝焼けに切り替わる'}
+            rows={4}
+            className="w-full input-neon px-3 py-2 text-sm"
+          />
         </div>
 
         <div>
@@ -395,8 +485,10 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
         disabled={busy}
         className="w-full btn-primary py-2 disabled:opacity-50"
       >
-        {busy ? '生成中…' : '歌詞プロンプトを生成'}
+        {busy ? '生成中…' : '② 歌詞プロンプトを生成'}
       </button>
+
+      <ConsentModal open={consentModalOpen} onConsent={handleConsentGranted} onCancel={handleConsentCancelled} />
     </form>
   )
 }

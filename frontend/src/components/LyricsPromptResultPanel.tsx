@@ -1,15 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { LyricsPromptResult, LyricsPromptVariant } from '../types/lyricsPrompt'
-import {
-  getClaudeApiKey,
-  getClaudeModel,
-  getExternalSendConsent,
-  hasClaudeApiKey,
-  setExternalSendConsent,
-  updateHistoryEntry,
-  updateLyricsQuality,
-} from '../lib/db'
+import { getClaudeApiKey, getClaudeModel, updateHistoryEntry, updateLyricsQuality } from '../lib/db'
 import { callClaude } from '../lib/claudeClient'
+import { useClaudeExternalSendConsent } from '../hooks/useClaudeExternalSendConsent'
 import { StarRating } from './StarRating'
 import { ConsentModal } from './ConsentModal'
 
@@ -32,16 +25,11 @@ export function LyricsPromptResultPanel({ historyEntryId, result }: LyricsPrompt
   const [saved, setSaved] = useState(false)
 
   const [claudeResults, setClaudeResults] = useState<Record<string, ClaudeCallState>>({})
-  const [pendingVariant, setPendingVariant] = useState<LyricsPromptVariant | null>(null)
-  const [consentModalOpen, setConsentModalOpen] = useState(false)
+  const { hasApiKey, consentModalOpen, runWithConsent, handleConsentGranted, handleConsentCancelled } =
+    useClaudeExternalSendConsent()
 
   const [actualLyricsText, setActualLyricsText] = useState('')
   const [lyricsQualityRating, setLyricsQualityRating] = useState(0)
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    hasClaudeApiKey().then(setHasApiKey).catch(() => setHasApiKey(false))
-  }, [])
 
   async function persist(patch: { selectedVariantId?: string; rating?: number; tags?: string[] }) {
     await updateHistoryEntry(historyEntryId, patch)
@@ -105,28 +93,7 @@ export function LyricsPromptResultPanel({ historyEntryId, result }: LyricsPrompt
   }
 
   async function handleSendToClaude(variant: LyricsPromptVariant) {
-    const consent = await getExternalSendConsent()
-    if (!consent.granted) {
-      setPendingVariant(variant)
-      setConsentModalOpen(true)
-      return
-    }
-    await performSend(variant)
-  }
-
-  async function handleConsentGranted() {
-    await setExternalSendConsent(true)
-    setConsentModalOpen(false)
-    if (pendingVariant) {
-      const variant = pendingVariant
-      setPendingVariant(null)
-      await performSend(variant)
-    }
-  }
-
-  function handleConsentCancelled() {
-    setConsentModalOpen(false)
-    setPendingVariant(null)
+    await runWithConsent(() => performSend(variant))
   }
 
   return (
