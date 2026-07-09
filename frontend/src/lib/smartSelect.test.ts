@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deriveLyricsInputFromComposition, pickSmartCompositionInput, pickSmartLyricsInput } from './smartSelect'
-import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from './../types/persistence'
+import type { CompositionHistoryEntry, ClaudeCompositionHistoryEntry, LyricsPromptHistoryEntry } from './../types/persistence'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -14,6 +14,22 @@ function compositionEntry(
   return {
     id: crypto.randomUUID(),
     kind: 'composition',
+    createdAt,
+    tags: [],
+    rating,
+    input: { genreKey: 'jrock', instrumentKeys: [], atmosphereKeys: [], ...overrides },
+    variants: [],
+  }
+}
+
+function claudeCompositionEntry(
+  overrides: Partial<ClaudeCompositionHistoryEntry['input']>,
+  rating: number | undefined,
+  createdAt = new Date().toISOString(),
+): ClaudeCompositionHistoryEntry {
+  return {
+    id: crypto.randomUUID(),
+    kind: 'claudeComposition',
     createdAt,
     tags: [],
     rating,
@@ -83,6 +99,19 @@ describe('pickSmartCompositionInput', () => {
       themeKeywords: ['夜のドライブ'],
     })
     expect(result.input.songStructureKey).toBeTruthy()
+    expect(result.predictedRating).toBe(5)
+  })
+
+  it('learns favorite combos from claudeComposition history too (same input shape as composition)', () => {
+    // 「作曲」タブと「Claude作曲」タブは選択項目・創作の好みが同じなので、Claude作曲だけを
+    // 使っているユーザーでも自動選択がその実績を活用できる必要がある。
+    const history = [
+      claudeCompositionEntry({ moodKey: 'party' }, 5, '2026-01-01T00:00:00.000Z'),
+      claudeCompositionEntry({ moodKey: 'party' }, 5, '2026-01-02T00:00:00.000Z'),
+    ]
+    vi.spyOn(Math, 'random').mockReturnValue(0.9)
+    const result = pickSmartCompositionInput(history)
+    expect(result.input.moodKey).toBe('party')
     expect(result.predictedRating).toBe(5)
   })
 

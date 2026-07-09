@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeFavoriteCompositionCombos, computeFavoriteLyricsCombos } from './comboLearning'
 import { SMART_LOOP_TAG } from './learning/trainingData'
-import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
+import type { CompositionHistoryEntry, ClaudeCompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
 
 function compositionEntry(
   overrides: Partial<CompositionHistoryEntry['input']>,
@@ -11,6 +11,27 @@ function compositionEntry(
   return {
     id: crypto.randomUUID(),
     kind: 'composition',
+    createdAt,
+    tags: [],
+    rating,
+    input: {
+      genreKey: 'jrock',
+      instrumentKeys: [],
+      atmosphereKeys: [],
+      ...overrides,
+    },
+    variants: [],
+  }
+}
+
+function claudeCompositionEntry(
+  overrides: Partial<ClaudeCompositionHistoryEntry['input']>,
+  rating: number | undefined,
+  createdAt: string,
+): ClaudeCompositionHistoryEntry {
+  return {
+    id: crypto.randomUUID(),
+    kind: 'claudeComposition',
     createdAt,
     tags: [],
     rating,
@@ -107,6 +128,16 @@ describe('computeFavoriteCompositionCombos', () => {
     autoEntry.tags = [SMART_LOOP_TAG]
     const combos = computeFavoriteCompositionCombos([autoEntry])
     expect(combos).toEqual([])
+  })
+
+  it('merges composition and claudeComposition entries into the same combo (same input shape, same creative preference)', () => {
+    const combos = computeFavoriteCompositionCombos([
+      compositionEntry({ moodKey: 'party' }, 4, '2026-01-01T00:00:00.000Z'),
+      claudeCompositionEntry({ moodKey: 'party' }, 5, '2026-01-02T00:00:00.000Z'),
+    ])
+    expect(combos).toHaveLength(1)
+    expect(combos[0].sampleCount).toBe(2)
+    expect(combos[0].averageRating).toBe(4.5)
   })
 })
 

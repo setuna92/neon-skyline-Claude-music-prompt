@@ -1,6 +1,11 @@
 import templatesData from '../data/templates.json'
 import type { OptionEntry, PromptTemplates } from '../types/templates'
-import type { HistoryEntry, CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
+import type {
+  HistoryEntry,
+  CompositionHistoryEntry,
+  ClaudeCompositionHistoryEntry,
+  LyricsPromptHistoryEntry,
+} from '../types/persistence'
 import type { GenerationInput } from '../types/generation'
 import type { LyricsPromptInput } from '../types/lyricsPrompt'
 import type { FavoriteCombo } from './comboLearning'
@@ -184,7 +189,12 @@ export function pickSmartCompositionInput(
   history: HistoryEntry[],
   options: SmartSelectOptions = {},
 ): SmartSelectionResult<GenerationInput> {
-  const compositionEntries = history.filter((e): e is CompositionHistoryEntry => e.kind === 'composition')
+  // 「作曲」と「Claude作曲」は選択項目が同じで表す創作の好みも同じなので、
+  // お気に入り組み合わせの学習母集団としては両方の履歴を合算する(comboLearning.tsと同じ方針)。
+  const compositionEntries = history.filter(
+    (e): e is CompositionHistoryEntry | ClaudeCompositionHistoryEntry =>
+      e.kind === 'composition' || e.kind === 'claudeComposition',
+  )
   const combos = computeFavoriteCompositionCombos(compositionEntries)
   const picked = pickFromFavoriteCombos(combos, options.allowedGenreKeys, {
     genreKey: options.avoidGenreKey,

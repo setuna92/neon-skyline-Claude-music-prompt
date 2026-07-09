@@ -5,19 +5,56 @@ import type { GenerationInput } from '../types/generation'
 import type { ClaudeCompositionResult } from '../types/claudeComposition'
 import { generateClaudeCompositionPromptVariants } from '../lib/claudeCompositionPromptGenerator'
 import { buildKeywordSuggestions } from '../lib/keywordSuggestionEngine'
-import { addHistoryEntry } from '../lib/db'
+import { pickSmartCompositionInput } from '../lib/smartSelect'
+import { callClaude } from '../lib/claudeClient'
+import { composeSunoSongViaHelper, isSunoHelperRunning } from '../lib/sunoAutomationClient'
+import {
+  addHistoryEntry,
+  getAllHistory,
+  getClaudeApiKey,
+  getClaudeModel,
+  getExternalSendConsent,
+  hasClaudeApiKey,
+  setExternalSendConsent,
+  updateClaudeCompositionQuality,
+} from '../lib/db'
 import { useOptionRanking } from '../hooks/useOptionRanking'
 import { useKeywordScores } from '../hooks/useKeywordScores'
 import { useDiscoveredKeywords } from '../hooks/useDiscoveredKeywords'
 import { useKeywordAssociations } from '../hooks/useKeywordAssociations'
 import { useDemotedKeywords } from '../hooks/useDemotedKeywords'
 import { useTempoHints } from '../hooks/useTempoHints'
+import { useFavoriteCompositionCombos } from '../hooks/useFavoriteCombos'
 import { KeywordSuggestionPicker } from './KeywordSuggestionPicker'
+import { FavoriteComboPicker } from './FavoriteComboPicker'
+import { ConsentModal } from './ConsentModal'
 
 const templates = templatesData as PromptTemplates
 
 function withRatingBadge(label: string, averageRating: number | undefined): string {
   return averageRating !== undefined && averageRating >= 4 ? `⭐ ${label}` : label
+}
+
+function findLabel(list: { key: string; label: string }[], key: string | undefined): string | undefined {
+  return key ? list.find((e) => e.key === key)?.label : undefined
+}
+
+function describeCombo(input: GenerationInput): string {
+  const parts = [
+    findLabel(templates.genres, input.genreKey) ?? input.genreKey,
+    findLabel(templates.moods, input.moodKey),
+    input.tempo ? `BPM${input.tempo}` : undefined,
+    findLabel(templates.vocalTypes, input.vocalTypeKey) ?? 'ボーカルなし',
+    findLabel(templates.songStructures, input.songStructureKey),
+    input.instrumentKeys.length
+      ? `楽器:${input.instrumentKeys.map((k) => findLabel(templates.instrumentElements, k) ?? k).join('/')}`
+      : undefined,
+    input.atmosphereKeys.length
+      ? `雰囲気:${input.atmosphereKeys.map((k) => findLabel(templates.atmospheres, k) ?? k).join('/')}`
+      : undefined,
+    input.themeKeywords?.length ? `テーマ:${input.themeKeywords.join('/')}` : undefined,
+  ]
+  return parts.filter(Boolean).join(' / ')
 }
 
 const EMPTY_INPUT: GenerationInput = {
@@ -34,13 +71,19 @@ function toggleKey(list: string[], key: string): string[] {
   return list.includes(key) ? list.filter((k) => k !== key) : [...list, key]
 }
 
+type SunoAutomationStatus = 'idle' | 'generating-prompt' | 'checking-helper' | 'sending-to-suno' | 'done' | 'error'
+
+interface SunoAutomationState {
+  status: SunoAutomationStatus
+  message?: string
+}
+
+const SUNO_IN_PROGRESS_STATUSES: SunoAutomationStatus[] = ['generating-prompt', 'checking-helper', 'sending-to-suno']
+
 interface ClaudeCompositionFormProps {
   onGenerated: (historyEntryId: string, result: ClaudeCompositionResult) => void
 }
 
-// 「自動選択」ボタンやお気に入り組み合わせピッカーは、この機能の初期スコープでは意図的に含めていない
-// (仕様承認時に手動選択のみと決めたため)。追加する場合は smartSelect.ts / comboLearning.ts /
-// useFavoriteCombos.ts に claudeComposition 向けの選択・集計ロジックを別途追加する必要がある。
 export function ClaudeCompositionForm({ onGenerated }: ClaudeCompositionFormProps) {
   const [input, setInput] = useState<GenerationInput>(EMPTY_INPUT)
   const [genreFilter, setGenreFilter] = useState('')
@@ -48,18 +91,57 @@ export function ClaudeCompositionForm({ onGenerated }: ClaudeCompositionFormProp
   const [busy, setBusy] = useState(false)
   // busy(state)は再レンダー後まで最新値を読めないため、同期的な連打(2重送信)を防ぐのに使う
   const busyRef = useRef(false)
+  // 直前に自動選択した結果を覚えておき、次に押した時に同じ組み合わせを避けるために使う
+  const lastAutoSelectRef = useRef<{ genreKey: string; moodKey?: string } | null>(null)
   const [themeKeywordsText, setThemeKeywordsText] = useState('')
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
   const [instrumentsOpen, setInstrumentsOpen] = useState(false)
   const [atmosphereOpen, setAtmosphereOpen] = useState(false)
+  const [appliedMessage, setAppliedMessage] = useState<string | null>(null)
   const { rank, scoreFor } = useOptionRanking()
+
+  // 「🎵 Sunoで自動作曲」ボタン専用の状態(通常の生成ボタンとは独立して管理する)
+  const sunoBusyRef = useRef(false)
+  const [sunoState, setSunoState] = useState<SunoAutomationState>({ status: 'idle' })
+  const [pendingAutoComposeInput, setPendingAutoComposeInput] = useState<GenerationInput | null>(null)
+  const [consentModalOpen, setConsentModalOpen] = useState(false)
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null)
+  const sunoInProgress = SUNO_IN_PROGRESS_STATUSES.includes(sunoState.status)
+
+  useEffect(() => {
+    hasClaudeApiKey().then(setHasApiKey).catch(() => setHasApiKey(false))
+  }, [])
 
   const keywordScores = useKeywordScores()
   const discoveredWords = useDiscoveredKeywords()
   const learnedAssociations = useKeywordAssociations()
   const demotedWords = useDemotedKeywords()
   const tempoHints = useTempoHints()
+  const favoriteCombos = useFavoriteCompositionCombos()
   const tempoHintForGenre = tempoHints.find((h) => h.genreKey === input.genreKey)
+
+  function applyComboToInput(combo: GenerationInput) {
+    setGenreFilter('')
+    setInput({
+      genreKey: combo.genreKey,
+      moodKey: combo.moodKey,
+      tempo: combo.tempo,
+      vocalTypeKey: combo.vocalTypeKey,
+      instrumentKeys: combo.instrumentKeys,
+      songStructureKey: combo.songStructureKey,
+      atmosphereKeys: combo.atmosphereKeys,
+    })
+    setThemeKeywordsText((combo.themeKeywords ?? []).join(', '))
+    setSelectedSuggestions([])
+    setInstrumentsOpen(combo.instrumentKeys.length > 0)
+    setAtmosphereOpen(combo.atmosphereKeys.length > 0)
+  }
+
+  function handleApplyCombo(combo: GenerationInput) {
+    applyComboToInput(combo)
+    setAppliedMessage('組み合わせを適用しました。内容を確認して生成ボタンを押してください。')
+    setTimeout(() => setAppliedMessage(null), 4000)
+  }
 
   const suggestionGroups = useMemo(
     () =>
@@ -107,21 +189,10 @@ export function ClaudeCompositionForm({ onGenerated }: ClaudeCompositionFormProp
   const rankedInstruments = rank('instrumentKeys', templates.instrumentElements)
   const rankedAtmospheres = rank('atmosphereKeys', templates.atmospheres)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    // busy(state)は同期的な連打の間は古い値のままなので、refで即座にガードする
-    if (busyRef.current) return
-    busyRef.current = true
+  async function runGeneration(fullInput: GenerationInput) {
     setError(null)
     setBusy(true)
     try {
-      const manualKeywords = themeKeywordsText
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-      const themeKeywords = [...new Set([...manualKeywords, ...selectedSuggestions])]
-      const fullInput = { ...input, themeKeywords }
-
       let result: ClaudeCompositionResult
       try {
         result = generateClaudeCompositionPromptVariants(fullInput)
@@ -144,8 +215,148 @@ export function ClaudeCompositionForm({ onGenerated }: ClaudeCompositionFormProp
     }
   }
 
+  function collectThemeKeywords(): string[] {
+    const manualKeywords = themeKeywordsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    return [...new Set([...manualKeywords, ...selectedSuggestions])]
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    // busy(state)は同期的な連打の間は古い値のままなので、refで即座にガードする
+    if (busyRef.current) return
+    busyRef.current = true
+    await runGeneration({ ...input, themeKeywords: collectThemeKeywords() })
+  }
+
+  async function handleAutoSelect() {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setError(null)
+    setGenreFilter('')
+    const history = await getAllHistory().catch(() => [])
+    const { input: picked } = pickSmartCompositionInput(history, {
+      avoidGenreKey: lastAutoSelectRef.current?.genreKey,
+      avoidMoodKey: lastAutoSelectRef.current?.moodKey,
+    })
+    lastAutoSelectRef.current = { genreKey: picked.genreKey, moodKey: picked.moodKey }
+    applyComboToInput(picked)
+    await runGeneration(picked)
+  }
+
+  /** Claudeにこの入力からSuno向けプロンプトを書かせ、ローカルの自動化ヘルパー経由でSunoに送って実際に作曲させる */
+  async function performAutoCompose(fullInput: GenerationInput) {
+    setSunoState({ status: 'generating-prompt' })
+    try {
+      let result: ClaudeCompositionResult
+      try {
+        result = generateClaudeCompositionPromptVariants(fullInput)
+      } catch (err) {
+        setSunoState({ status: 'error', message: err instanceof Error ? err.message : '生成に失敗しました' })
+        return
+      }
+      const entry = await addHistoryEntry({
+        kind: 'claudeComposition',
+        input: fullInput,
+        variants: result.variants,
+        tags: ['自動作曲'],
+      })
+      onGenerated(entry.id, result)
+
+      const apiKey = await getClaudeApiKey()
+      if (!apiKey) {
+        setSunoState({ status: 'error', message: 'Claude APIキーが未設定です。設定タブから登録してください。' })
+        return
+      }
+      const model = await getClaudeModel()
+      const standardVariant = result.variants.find((v) => v.styleId === 'standard') ?? result.variants[0]
+      const sunoPromptText = await callClaude(standardVariant.promptText, { apiKey, model })
+      await updateClaudeCompositionQuality(entry.id, { actualCompositionPromptText: sunoPromptText })
+
+      setSunoState({ status: 'checking-helper' })
+      const helperRunning = await isSunoHelperRunning()
+      if (!helperRunning) {
+        setSunoState({
+          status: 'error',
+          message:
+            'ローカルのSuno自動化ヘルパー(suno-automation-helper)が起動していません。起動するか、履歴に保存されたClaudeの応答をコピーしてSunoに手動で貼り付けてください。',
+        })
+        return
+      }
+
+      setSunoState({ status: 'sending-to-suno' })
+      const composeResult = await composeSunoSongViaHelper(sunoPromptText)
+      if (!composeResult.ok) {
+        setSunoState({ status: 'error', message: composeResult.error ?? 'Sunoへの自動送信に失敗しました' })
+        return
+      }
+      setSunoState({ status: 'done' })
+    } catch (err) {
+      setSunoState({ status: 'error', message: err instanceof Error ? err.message : '自動作曲に失敗しました' })
+    }
+  }
+
+  async function handleAutoComposeOnSuno() {
+    if (sunoBusyRef.current) return
+    sunoBusyRef.current = true
+    try {
+      const fullInput = { ...input, themeKeywords: collectThemeKeywords() }
+      const consent = await getExternalSendConsent()
+      if (!consent.granted) {
+        setPendingAutoComposeInput(fullInput)
+        setConsentModalOpen(true)
+        return
+      }
+      await performAutoCompose(fullInput)
+    } finally {
+      sunoBusyRef.current = false
+    }
+  }
+
+  async function handleConsentGranted() {
+    await setExternalSendConsent(true)
+    setConsentModalOpen(false)
+    if (pendingAutoComposeInput) {
+      const fullInput = pendingAutoComposeInput
+      setPendingAutoComposeInput(null)
+      sunoBusyRef.current = true
+      try {
+        await performAutoCompose(fullInput)
+      } finally {
+        sunoBusyRef.current = false
+      }
+    }
+  }
+
+  function handleConsentCancelled() {
+    setConsentModalOpen(false)
+    setPendingAutoComposeInput(null)
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <button
+        type="button"
+        onClick={() => void handleAutoSelect()}
+        disabled={busy}
+        className="w-full btn-primary py-2.5 text-sm disabled:opacity-50"
+      >
+        {busy ? '生成中…' : '🎲 自動選択でおまかせ生成'}
+      </button>
+      <p className="text-[11px] text-text-muted -mt-2">
+        相性の良い（過去の高評価の実績に基づく）組み合わせを全項目自動で選び、Claudeへの指示文まで生成します。
+      </p>
+
+      <FavoriteComboPicker combos={favoriteCombos} describe={describeCombo} onApply={handleApplyCombo} />
+      {appliedMessage && (
+        <p className="text-xs text-neon-green bg-dark-lighter border border-neon-green rounded-lg px-3 py-2">
+          ✅ {appliedMessage}
+        </p>
+      )}
+
       <p className="text-[11px] text-text-muted">
         選んだ条件から、Claudeに「Suno向けの作曲プロンプトを書いて」と依頼するための指示文を生成します。
       </p>
@@ -348,6 +559,50 @@ export function ClaudeCompositionForm({ onGenerated }: ClaudeCompositionFormProp
       >
         {busy ? '生成中…' : 'Claude作曲プロンプトを生成'}
       </button>
+
+      <div className="glass-panel glass-panel-hover p-4 space-y-2">
+        <h3 className="text-neon-cyan text-sm font-semibold">🎵 Sunoで自動作曲（実験的）</h3>
+        <p className="text-[11px] text-text-muted">
+          上の条件でClaudeにSuno向けプロンプトを書かせ、ローカルで動く自動化ヘルパー(suno-automation-helper)経由で
+          Sunoに直接送信し、実際に1曲分の作曲を自動で開始します。事前に <code>suno-automation-helper</code> を
+          あなたのPCで起動し、Sunoにログイン済みにしておく必要があります。
+        </p>
+        {hasApiKey === false && (
+          <p className="text-[10px] text-text-muted">設定タブでClaude APIキーを登録すると使えます。</p>
+        )}
+        <button
+          type="button"
+          onClick={() => void handleAutoComposeOnSuno()}
+          // hasApiKeyは起動直後はnull(未確認)なので、確認が済んでtrueになるまでは押せないようにする
+          // (未確認のまま押せてしまうと、履歴だけ保存されてAPI呼び出しで即エラーになる中途半端な状態になるため)
+          disabled={sunoInProgress || consentModalOpen || hasApiKey !== true}
+          title={hasApiKey !== true ? '設定タブでClaude APIキーを登録すると使えます' : undefined}
+          className="w-full btn-primary py-2 text-sm disabled:opacity-50"
+        >
+          {sunoInProgress ? sunoStatusLabel(sunoState.status) : '🎵 Sunoで自動作曲'}
+        </button>
+        {sunoState.status === 'done' && (
+          <p className="text-xs text-neon-green">✅ Sunoに送信しました。Suno側の生成状況を確認してください。</p>
+        )}
+        {sunoState.status === 'error' && sunoState.message && (
+          <p className="text-xs text-neon-pink whitespace-pre-line">{sunoState.message}</p>
+        )}
+      </div>
+
+      <ConsentModal open={consentModalOpen} onConsent={handleConsentGranted} onCancel={handleConsentCancelled} />
     </form>
   )
+}
+
+function sunoStatusLabel(status: SunoAutomationStatus): string {
+  switch (status) {
+    case 'generating-prompt':
+      return 'Claudeに作曲プロンプトを書かせています…'
+    case 'checking-helper':
+      return 'ローカルヘルパーを確認しています…'
+    case 'sending-to-suno':
+      return 'Sunoに送信しています…'
+    default:
+      return '処理中…'
+  }
 }

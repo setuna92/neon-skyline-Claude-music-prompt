@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ClaudeCompositionResult, ClaudeCompositionVariant } from '../types/claudeComposition'
 import {
+  getAllHistory,
   getClaudeApiKey,
   getClaudeModel,
   getExternalSendConsent,
   hasClaudeApiKey,
+  onDataChange,
   setExternalSendConsent,
   updateHistoryEntry,
   updateClaudeCompositionQuality,
@@ -24,6 +26,11 @@ interface ClaudeCallState {
   error?: string
 }
 
+// 「🎵 Sunoで自動作曲」ボタン経由で保存された履歴に付くタグ(ClaudeCompositionForm.tsx参照)
+const AUTO_COMPOSE_TAG = '自動作曲'
+
+type HistoryLoadStatus = 'loading' | 'done' | 'error'
+
 export function ClaudeCompositionResultPanel({ historyEntryId, result }: ClaudeCompositionResultPanelProps) {
   const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>(undefined)
   const [rating, setRating] = useState(0)
@@ -39,9 +46,92 @@ export function ClaudeCompositionResultPanel({ historyEntryId, result }: ClaudeC
   const [compositionPromptQualityRating, setCompositionPromptQualityRating] = useState(0)
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null)
 
+  // 「実際に得られた作曲プロンプト」欄が、ユーザー自身の貼り付けではなく
+  // 「🎵 Sunoで自動作曲」から自動的に保存されたものかどうか
+  const [autoRecordedViaSuno, setAutoRecordedViaSuno] = useState(false)
+
+  const [historyLoadStatus, setHistoryLoadStatus] = useState<HistoryLoadStatus>('loading')
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
+
+  // ユーザーが「実際に得られた作曲プロンプト」欄を自分で編集し始めたかどうか。
+  // 「🎵 Sunoで自動作曲」はパネル表示後(onGenerated呼び出し後)に非同期でClaude APIを呼んでから
+  // actualCompositionPromptTextを保存するため、初回読み込み時点ではまだ間に合わないことがある。
+  // onDataChangeで後から届いた更新を反映したいが、ユーザーが既に手で編集を始めていたら上書きしない。
+  const userEditedActualTextRef = useRef(false)
+
   useEffect(() => {
     hasClaudeApiKey().then(setHasApiKey).catch(() => setHasApiKey(false))
   }, [])
+
+  // historyEntryId(表示対象の履歴)が変わるたびに、その履歴の実データで各stateを初期化し直す。
+  // 「🎵 Sunoで自動作曲」はフォーム側から直接actualCompositionPromptText等を保存するため、
+  // このパネルが開かれた時点で既に値が入っている場合がある。それをここで読み込んで表示する。
+  useEffect(() => {
+    let cancelled = false
+    userEditedActualTextRef.current = false
+
+    async function loadFromHistory(isInitialLoad: boolean) {
+      if (isInitialLoad) {
+        setHistoryLoadStatus('loading')
+        setHistoryLoadError(null)
+      }
+      try {
+        const entries = await getAllHistory()
+        if (cancelled) return
+        const entry = entries.find((e) => e.id === historyEntryId)
+
+        if (entry && entry.kind === 'claudeComposition') {
+          // ユーザーが既にこの欄を編集し始めている場合、後追いの自動反映で上書きしない
+          if (isInitialLoad || !userEditedActualTextRef.current) {
+            setActualCompositionPromptText(entry.actualCompositionPromptText ?? '')
+            setCompositionPromptQualityRating(entry.compositionPromptQualityRating ?? 0)
+            setAutoRecordedViaSuno(
+              Boolean(entry.actualCompositionPromptText?.trim()) && (entry.tags ?? []).includes(AUTO_COMPOSE_TAG),
+            )
+          }
+          if (isInitialLoad) {
+            setSelectedVariantId(entry.selectedVariantId)
+            setRating(entry.rating ?? 0)
+            setTagsInput((entry.tags ?? []).join(', '))
+          }
+        } else if (isInitialLoad) {
+          setSelectedVariantId(undefined)
+          setRating(0)
+          setTagsInput('')
+          setActualCompositionPromptText('')
+          setCompositionPromptQualityRating(0)
+          setAutoRecordedViaSuno(false)
+        }
+
+        if (isInitialLoad) {
+          // Claudeへの送信結果・コピー済み表示など、この履歴に紐づく一時的な表示状態もリセットする
+          setClaudeResults({})
+          setCopiedId(null)
+          setSaved(false)
+          setHistoryLoadStatus('done')
+        }
+      } catch (err) {
+        if (cancelled) return
+        if (!isInitialLoad) {
+          // バックグラウンドでの再読み込み失敗はUIをエラー状態にはしない(初回表示は既に成功しているため)が、
+          // 気づけるようにログには残しておく
+          console.error('履歴のバックグラウンド再読み込みに失敗しました', err)
+          return
+        }
+        setHistoryLoadError(err instanceof Error ? err.message : '履歴の読み込みに失敗しました')
+        setHistoryLoadStatus('error')
+      }
+    }
+
+    void loadFromHistory(true)
+    // 「Sunoで自動作曲」がこのパネル表示後に非同期でactualCompositionPromptTextを保存した場合に備え、
+    // データ変化を購読して後追いで反映する(ユーザーが編集中でなければ)
+    const unsubscribe = onDataChange(() => void loadFromHistory(false))
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [historyEntryId])
 
   async function persist(patch: { selectedVariantId?: string; rating?: number; tags?: string[] }) {
     await updateHistoryEntry(historyEntryId, patch)
@@ -138,6 +228,14 @@ export function ClaudeCompositionResultPanel({ historyEntryId, result }: ClaudeC
       <p className="text-[11px] text-text-muted">
         コピーして他のAIチャットボットに貼り付けるか、「Claudeに送信」でこのアプリから直接Claude APIに投げて結果を確認できます。
       </p>
+      {historyLoadStatus === 'loading' && (
+        <p className="text-[11px] text-text-muted">履歴データを読み込み中…</p>
+      )}
+      {historyLoadStatus === 'error' && (
+        <p className="text-[11px] text-neon-pink">
+          {historyLoadError ?? '履歴の読み込みに失敗しました'}（評価やタグの保存はできますが、既存の入力内容が反映されていない可能性があります）
+        </p>
+      )}
       {hasApiKey === false && (
         <p className="text-[10px] text-text-muted">
           「Claudeに送信」を使うには設定タブでAPIキーを登録してください。使わなくても、下の「実際に得られた作曲プロンプト」欄に
@@ -242,10 +340,19 @@ export function ClaudeCompositionResultPanel({ historyEntryId, result }: ClaudeC
           <label className="text-xs text-text-secondary block mb-1" htmlFor="actual-composition-prompt-text">
             実際に得られた作曲プロンプト（貼り付け）
           </label>
+          {autoRecordedViaSuno && (
+            <p className="text-[10px] text-neon-purple mb-1">
+              🎵 「Sunoで自動作曲」から自動的に記録されたものです。内容を確認し、必要であれば編集してください。
+            </p>
+          )}
           <textarea
             id="actual-composition-prompt-text"
             value={actualCompositionPromptText}
-            onChange={(e) => setActualCompositionPromptText(e.target.value)}
+            onChange={(e) => {
+              userEditedActualTextRef.current = true
+              setActualCompositionPromptText(e.target.value)
+              if (autoRecordedViaSuno) setAutoRecordedViaSuno(false)
+            }}
             onBlur={handleActualCompositionPromptBlur}
             placeholder="Copilot等に送って得られた作曲プロンプトをここに貼り付けてください"
             rows={5}
