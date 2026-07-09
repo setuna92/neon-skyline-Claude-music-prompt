@@ -3,6 +3,7 @@ import {
   buildKeywordSuggestions,
   rankWordsByScore,
   scoreKeywordsFromHistory,
+  splitAutoSelectedKeywords,
 } from './keywordSuggestionEngine'
 import type { KeywordScore } from './keywordSuggestionEngine'
 import type { CompositionHistoryEntry, LyricsPromptHistoryEntry } from '../types/persistence'
@@ -165,5 +166,48 @@ describe('buildKeywordSuggestions', () => {
     const allWords = groups.flatMap((g) => g.words)
     expect(allWords).not.toContain('ヘッドライト')
     expect(allWords).toContain('未知語')
+  })
+})
+
+describe('splitAutoSelectedKeywords', () => {
+  const GENRE_KEY = 'emo_electronic_rock_x_drumnbass' // 実際にキーワードバンクを持つジャンル
+
+  function firstWordOf(category: 'production_tags' | 'imagery'): string {
+    const groups = buildKeywordSuggestions({ genreKey: GENRE_KEY, genreCategories: [category] })
+    const word = groups[0]?.words[0]
+    if (!word) throw new Error(`テストの前提が崩れています: ${category}に候補語がありません`)
+    return word
+  }
+
+  it('treats a word from an eligible category (e.g. imagery) as chip-selected', () => {
+    const imageryWord = firstWordOf('imagery')
+    const { chipSelected, freeform } = splitAutoSelectedKeywords(
+      [imageryWord],
+      { genreKey: GENRE_KEY, atmosphereKeys: [] },
+      ['imagery', 'production_tags'],
+    )
+    expect(chipSelected).toEqual([imageryWord])
+    expect(freeform).toEqual([])
+  })
+
+  it('never treats a production_tags word as chip-selected, even when that category is passed in', () => {
+    const productionWord = firstWordOf('production_tags')
+    const { chipSelected, freeform } = splitAutoSelectedKeywords(
+      [productionWord],
+      { genreKey: GENRE_KEY, atmosphereKeys: [] },
+      ['imagery', 'production_tags'],
+    )
+    expect(chipSelected).toEqual([])
+    expect(freeform).toEqual([productionWord])
+  })
+
+  it('treats a word with no matching chip (e.g. pure freeform user input) as freeform', () => {
+    const { chipSelected, freeform } = splitAutoSelectedKeywords(
+      ['この単語はどの候補にも無い'],
+      { genreKey: GENRE_KEY, atmosphereKeys: [] },
+      ['imagery'],
+    )
+    expect(chipSelected).toEqual([])
+    expect(freeform).toEqual(['この単語はどの候補にも無い'])
   })
 })

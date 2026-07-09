@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+import { openDB, deleteDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type {
   HistoryEntry,
   LyricsPromptHistoryEntry,
@@ -108,6 +108,52 @@ export async function closeDB(): Promise<void> {
     db.close()
     dbPromise = null
   }
+  invalidateHistoryCache()
+}
+
+/**
+ * 全データ(履歴・プリセット・設定・暗号化キー導出用ソルト等)を完全に削除し、
+ * 次回パスフレーズ設定を初回起動としてやり直せる状態に戻す。
+ * パスフレーズを忘れて復号できなくなった場合の唯一の回復手段(データは引き継がれない)。
+ */
+const RESET_BLOCKED_TIMEOUT_MS = 3000
+
+export async function resetAllData(): Promise<void> {
+  if (dbPromise) {
+    const db = await dbPromise
+    db.close()
+    dbPromise = null
+  }
+
+  // 他のタブ/ウィンドウでこのアプリの接続が開いたままだと削除リクエストが永久にブロックされ、
+  // 呼び出し元(パスフレーズ画面)が「処理中…」のままハングしてしまう。一定時間で諦めて
+  // エラーとして呼び出し元に返せるようにする。
+  let blocked = false
+  const deletePromise = deleteDB(DB_NAME, {
+    blocked() {
+      blocked = true
+    },
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (blocked) {
+        reject(new Error('他のタブでこのアプリが開いているため削除できません。他のタブを閉じてから再度お試しください。'))
+      }
+    }, RESET_BLOCKED_TIMEOUT_MS)
+    deletePromise.then(
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      (err: unknown) => {
+        clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+
+  clearActiveKey()
   invalidateHistoryCache()
 }
 

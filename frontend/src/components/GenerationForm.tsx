@@ -3,8 +3,9 @@ import templatesData from '../data/templates.json'
 import type { PromptTemplates } from '../types/templates'
 import type { GenerationInput } from '../types/generation'
 import type { PresetEntry } from '../types/persistence'
+import type { KeywordSuggestionCategory } from '../types/genreKeywordBank'
 import { generateVariants } from '../lib/promptGenerator'
-import { buildKeywordSuggestions } from '../lib/keywordSuggestionEngine'
+import { buildKeywordSuggestions, splitAutoSelectedKeywords } from '../lib/keywordSuggestionEngine'
 import { pickSmartCompositionInput } from '../lib/smartSelect'
 import { addHistoryEntry, addPreset, getAllHistory, getAllPresets } from '../lib/db'
 import { useOptionRanking } from '../hooks/useOptionRanking'
@@ -18,6 +19,18 @@ import { KeywordSuggestionPicker } from './KeywordSuggestionPicker'
 import { FavoriteComboPicker } from './FavoriteComboPicker'
 
 const templates = templatesData as PromptTemplates
+
+// このフォームのキーワード候補ピッカーが表示するカテゴリ(プロダクション指示語含む)。
+// 自動選択のチップ判定(splitAutoSelectedKeywords)もこれと同じ集合を使い、表示と一致させる。
+const KEYWORD_GENRE_CATEGORIES: KeywordSuggestionCategory[] = ['production_tags', 'imagery', 'adjectives', 'general']
+
+const TEMPO_PRESETS: { label: string; value: number }[] = [
+  { label: '遅い', value: 120 },
+  { label: 'やや遅い', value: 140 },
+  { label: '普通', value: 160 },
+  { label: 'やや早い', value: 180 },
+  { label: '早い', value: 200 },
+]
 
 function withRatingBadge(label: string, averageRating: number | undefined): string {
   return averageRating !== undefined && averageRating >= 4 ? `⭐ ${label}` : label
@@ -119,7 +132,7 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
           genreKey: input.genreKey,
           moodKey: input.moodKey,
           atmosphereKeys: input.atmosphereKeys,
-          genreCategories: ['production_tags', 'imagery', 'adjectives', 'general'],
+          genreCategories: KEYWORD_GENRE_CATEGORIES,
           discoveredWords,
           learnedAssociations,
           demotedWords,
@@ -137,10 +150,6 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
     ],
   )
 
-  // ジャンルを変えたら、そのジャンル向けの候補選択もリセットする
-  useEffect(() => {
-    setSelectedSuggestions([])
-  }, [input.genreKey])
 
   function handleToggleSuggestion(word: string) {
     setSelectedSuggestions((prev) => (prev.includes(word) ? prev.filter((w) => w !== word) : [...prev, word]))
@@ -202,6 +211,7 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
     const { input: picked } = pickSmartCompositionInput(history, {
       avoidGenreKey: lastAutoSelectRef.current?.genreKey,
       avoidMoodKey: lastAutoSelectRef.current?.moodKey,
+      genreCategories: KEYWORD_GENRE_CATEGORIES,
     })
     lastAutoSelectRef.current = { genreKey: picked.genreKey, moodKey: picked.moodKey }
     setInput({
@@ -213,8 +223,17 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
       songStructureKey: picked.songStructureKey,
       atmosphereKeys: picked.atmosphereKeys,
     })
-    setThemeKeywordsText((picked.themeKeywords ?? []).join(', '))
-    setSelectedSuggestions([])
+    // 選ばれたテーマキーワードのうち、候補チップ(イメージ語・キーワード等)に該当するものは
+    // 手入力欄ではなく「選択済みチップ」として反映する(プロダクション指示語は対象外)
+    const { chipSelected, freeform } = splitAutoSelectedKeywords(
+      picked.themeKeywords ?? [],
+      { genreKey: picked.genreKey, moodKey: picked.moodKey, atmosphereKeys: picked.atmosphereKeys },
+      KEYWORD_GENRE_CATEGORIES,
+      { discoveredWords, learnedAssociations, demotedWords },
+      keywordScores,
+    )
+    setThemeKeywordsText(freeform.join(', '))
+    setSelectedSuggestions(chipSelected)
     setInstrumentsOpen(picked.instrumentKeys.length > 0)
     setAtmosphereOpen(picked.atmosphereKeys.length > 0)
     await runGeneration(picked)
@@ -231,6 +250,10 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
     const preset = presets.find((p) => p.id === presetId)
     if (!preset) return
     setInput(preset.input)
+    // ジャンルが変わると候補チップの母集団も変わるため、古いジャンルのチップ選択を残さない
+    // (手入力欄もプリセット側の値で揃える。handleApplyComboと同じ扱い)
+    setThemeKeywordsText((preset.input.themeKeywords ?? []).join(', '))
+    setSelectedSuggestions([])
     setInstrumentsOpen(preset.input.instrumentKeys.length > 0)
     setAtmosphereOpen(preset.input.atmosphereKeys.length > 0)
   }
@@ -293,7 +316,11 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
           <select
             size={6}
             value={input.genreKey}
-            onChange={(e) => setInput((prev) => ({ ...prev, genreKey: e.target.value }))}
+            onChange={(e) => {
+              setInput((prev) => ({ ...prev, genreKey: e.target.value }))
+              // ジャンルを手動で変えたら、そのジャンル向けの候補選択もリセットする
+              setSelectedSuggestions([])
+            }}
             className="w-full input-neon px-3 py-2 text-sm"
           >
             {filteredGenres.map((g) => (
@@ -345,6 +372,22 @@ export function GenerationForm({ onGenerated }: GenerationFormProps) {
             }
             className="w-full input-neon px-3 py-2 text-sm"
           />
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {TEMPO_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => setInput((prev) => ({ ...prev, tempo: preset.value }))}
+                className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${
+                  input.tempo === preset.value
+                    ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan'
+                    : 'border-border-neon text-text-secondary'
+                }`}
+              >
+                {preset.label}（{preset.value}）
+              </button>
+            ))}
+          </div>
           {tempoHintForGenre && tempoHintForGenre.tempo !== input.tempo && (
             <button
               type="button"

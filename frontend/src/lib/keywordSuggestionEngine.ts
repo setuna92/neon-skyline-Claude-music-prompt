@@ -43,7 +43,7 @@ export interface BuildSuggestionArgs {
   demotedWords?: string[]
 }
 
-const DEFAULT_GENRE_CATEGORIES: KeywordSuggestionCategory[] = [
+export const DEFAULT_GENRE_CATEGORIES: KeywordSuggestionCategory[] = [
   'chorus_hooks',
   'imagery',
   'short_phrases',
@@ -160,4 +160,41 @@ export function buildKeywordSuggestions(
       return { ...group, words: rankWordsByScore(deduped, scores) }
     })
     .filter((group) => group.words.length > 0)
+}
+
+/**
+ * 自動選択(おまかせ選択)で選ばれたテーマキーワードのうち、その画面で実際に表示されている
+ * 候補チップ(イメージ語・キーワード等の小項目)に該当するものは「選択済みチップ」として、
+ * 該当しないものは手入力欄用として振り分ける。プロダクション指示語(production_tags)は
+ * 呼び出し元が渡すカテゴリに含まれていても、常に自動選択の対象外として除外する。
+ */
+export function splitAutoSelectedKeywords(
+  themeKeywords: string[],
+  context: { genreKey: string; moodKey?: string; atmosphereKeys: string[] },
+  genreCategories: KeywordSuggestionCategory[],
+  extras: { discoveredWords?: string[]; learnedAssociations?: KeywordAssociation[]; demotedWords?: string[] } = {},
+  scores: Map<string, KeywordScore> = new Map(),
+): { chipSelected: string[]; freeform: string[] } {
+  const eligibleCategories = genreCategories.filter((c) => c !== 'production_tags')
+  const groups = buildKeywordSuggestions(
+    {
+      genreKey: context.genreKey,
+      moodKey: context.moodKey,
+      atmosphereKeys: context.atmosphereKeys,
+      genreCategories: eligibleCategories,
+      discoveredWords: extras.discoveredWords,
+      learnedAssociations: extras.learnedAssociations,
+      demotedWords: extras.demotedWords,
+    },
+    scores,
+  )
+  const chipWords = new Set(groups.flatMap((g) => g.words))
+
+  const chipSelected: string[] = []
+  const freeform: string[] = []
+  for (const word of themeKeywords) {
+    if (chipWords.has(word)) chipSelected.push(word)
+    else freeform.push(word)
+  }
+  return { chipSelected, freeform }
 }

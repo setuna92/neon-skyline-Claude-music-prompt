@@ -61,6 +61,25 @@ describe('isInitialized / unlockWithPassphrase', () => {
     expect(await db.getAllHistory()).toEqual([])
   })
 
+  it('resetAllData() wipes everything so a new passphrase can be set from scratch, without needing the old one', async () => {
+    const db = await freshDb()
+    await db.unlockWithPassphrase('forgotten-passphrase')
+    await db.addHistoryEntry({
+      kind: 'composition',
+      input: { genreKey: 'pop', instrumentKeys: [], atmosphereKeys: [] },
+      variants: [],
+      tags: [],
+    })
+    expect(await db.isInitialized()).toBe(true)
+
+    await db.resetAllData()
+
+    expect(await db.isInitialized()).toBe(false)
+    // 新しいパスフレーズで初回起動としてやり直せる(古いパスフレーズは不要)
+    await db.unlockWithPassphrase('brand-new-passphrase')
+    expect(await db.getAllHistory()).toEqual([])
+  })
+
   it('verifies against existing encrypted data for legacy DBs without a check record', async () => {
     const db = await freshDb()
     await db.unlockWithPassphrase('correct-passphrase')

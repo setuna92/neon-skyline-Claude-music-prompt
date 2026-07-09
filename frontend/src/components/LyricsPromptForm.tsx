@@ -6,7 +6,7 @@ import type { ImportedPrompt } from '../types/promptLibrary'
 import { EMPTY_GENOME, genomeFromMutations } from '../types/textGenome'
 import type { TextGenome } from '../types/textGenome'
 import { generateLyricsPromptVariants } from '../lib/lyricsPromptGenerator'
-import { buildKeywordSuggestions } from '../lib/keywordSuggestionEngine'
+import { DEFAULT_GENRE_CATEGORIES, buildKeywordSuggestions, splitAutoSelectedKeywords } from '../lib/keywordSuggestionEngine'
 import { pickSmartLyricsInput } from '../lib/smartSelect'
 import { addHistoryEntry, getAllHistory, getTextMutations } from '../lib/db'
 import { useOptionRanking } from '../hooks/useOptionRanking'
@@ -104,10 +104,6 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     [genreKey, moodKey, atmosphereKeys, keywordScores, discoveredWords, learnedAssociations, demotedWords],
   )
 
-  // ジャンルを変えたら、そのジャンル向けの候補選択もリセットする
-  useEffect(() => {
-    setSelectedSuggestions([])
-  }, [genreKey])
 
   function handleToggleSuggestion(word: string) {
     setSelectedSuggestions((prev) => (prev.includes(word) ? prev.filter((w) => w !== word) : [...prev, word]))
@@ -194,6 +190,7 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     const { input: picked } = pickSmartLyricsInput(history, {
       avoidGenreKey: lastAutoSelectRef.current?.genreKey,
       avoidMoodKey: lastAutoSelectRef.current?.moodKey,
+      genreCategories: DEFAULT_GENRE_CATEGORIES,
     })
     lastAutoSelectRef.current = { genreKey: picked.genreKey, moodKey: picked.moodKey }
     setGenreKey(picked.genreKey)
@@ -201,9 +198,18 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
     setVocalTypeKey(picked.vocalTypeKey)
     setSongStructureKey(picked.songStructureKey)
     setAtmosphereKeys(picked.atmosphereKeys)
-    setThemeKeywordsText(picked.themeKeywords.join(', '))
+    // 選ばれたテーマキーワードのうち、候補チップ(イメージ語・キーワード等)に該当するものは
+    // 手入力欄ではなく「選択済みチップ」として反映する
+    const { chipSelected, freeform } = splitAutoSelectedKeywords(
+      picked.themeKeywords,
+      { genreKey: picked.genreKey, moodKey: picked.moodKey, atmosphereKeys: picked.atmosphereKeys },
+      DEFAULT_GENRE_CATEGORIES,
+      { discoveredWords, learnedAssociations, demotedWords },
+      keywordScores,
+    )
+    setThemeKeywordsText(freeform.join(', '))
+    setSelectedSuggestions(chipSelected)
     setLanguageKey(picked.languageKey)
-    setSelectedSuggestions([])
     setAtmosphereOpen(picked.atmosphereKeys.length > 0)
     await runGeneration(picked)
   }
@@ -250,7 +256,11 @@ export function LyricsPromptForm({ onGenerated, seed, onSeedConsumed }: LyricsPr
           <select
             size={6}
             value={genreKey}
-            onChange={(e) => setGenreKey(e.target.value)}
+            onChange={(e) => {
+              setGenreKey(e.target.value)
+              // ジャンルを手動で変えたら、そのジャンル向けの候補選択もリセットする
+              setSelectedSuggestions([])
+            }}
             className="w-full input-neon px-3 py-2 text-sm"
           >
             {filteredGenres.map((g) => (

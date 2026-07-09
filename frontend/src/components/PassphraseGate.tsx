@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { isInitialized, unlockWithPassphrase } from '../lib/db'
+import { isInitialized, resetAllData, unlockWithPassphrase } from '../lib/db'
 import { migrateLegacyPresetsFromLocalStorage } from '../lib/migrateLegacyPresets'
 
 interface PassphraseGateProps {
@@ -42,6 +42,28 @@ export function PassphraseGate({ onUnlock }: PassphraseGateProps) {
     }
   }
 
+  async function handleResetData() {
+    if (
+      !window.confirm(
+        '本当に全てのデータ(履歴・プリセット・設定)を削除して、新しいパスフレーズで最初からやり直しますか？\nこの操作は取り消せません。',
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await resetAllData()
+      setFirstRun(true)
+      setPassphrase('')
+      setConfirmPassphrase('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'リセットに失敗しました')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (firstRun === null) {
     return (
       <div className="min-h-svh flex items-center justify-center bg-dark-bg text-text-secondary text-sm">
@@ -57,7 +79,10 @@ export function PassphraseGate({ onUnlock }: PassphraseGateProps) {
         className="w-full max-w-sm glass-panel glass-panel-hover p-6 space-y-4"
       >
         <div className="text-center">
-          <h1 className="text-xl font-bold text-neon-blue">🔒 ローカルデータのロック解除</h1>
+          <h1 className="text-lg font-extrabold tracking-wide title-gradient inline-block">
+            🎵 AI音楽プロンプトジェネレーター
+          </h1>
+          <h2 className="text-xl font-bold text-neon-blue mt-1">🔒 ローカルデータのロック解除</h2>
           <p className="text-xs text-text-secondary mt-2">
             {firstRun
               ? 'このパスフレーズで履歴・プリセットをこの端末上で暗号化します。忘れると復元できないのでご注意ください。'
@@ -103,6 +128,17 @@ export function PassphraseGate({ onUnlock }: PassphraseGateProps) {
         >
           {busy ? '処理中…' : firstRun ? '設定して開始' : 'ロック解除'}
         </button>
+
+        {!firstRun && (
+          <button
+            type="button"
+            onClick={() => void handleResetData()}
+            disabled={busy}
+            className="w-full text-[11px] text-neon-pink underline disabled:opacity-50"
+          >
+            パスフレーズを忘れた場合: 新しいパスキーで開始（データは引き継がれません）
+          </button>
+        )}
       </form>
     </div>
   )

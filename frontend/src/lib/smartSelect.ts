@@ -11,8 +11,10 @@ import type { LyricsPromptInput } from '../types/lyricsPrompt'
 import type { FavoriteCombo } from './comboLearning'
 import { computeFavoriteCompositionCombos, computeFavoriteLyricsCombos } from './comboLearning'
 import { computeScoresByCategory } from './learning/ranking'
+import type { KeywordSuggestionCategory } from '../types/genreKeywordBank'
 import { buildKeywordSuggestions, scoreKeywordsFromHistory } from './keywordSuggestionEngine'
 import { THEME_WORD_BANK } from './autoLoop/executor'
+import { mineTempoCandidates } from './autoLoop/tempoLearning'
 
 const templates = templatesData as PromptTemplates
 
@@ -125,10 +127,33 @@ function pickKeysWeighted(
   return result
 }
 
+// UIのテンポクイック選択ボタン(遅い/やや遅い/普通/やや早い/早い)と同じ5段階。
+// 履歴からそのジャンルの実績テンポが見つからない場合の自動選択フォールバックに使う。
+const TEMPO_PRESETS = [120, 140, 160, 180, 200]
+
+/**
+ * 指定ジャンルで実績のあるテンポ(高評価が続いたBPM)があればそれを使い、無ければ
+ * プリセットの中からランダムに選ぶ。テンポが常に空欄のまま自動選択が終わらないようにするため。
+ */
+function pickFallbackTempo(history: HistoryEntry[], genreKey: string): number {
+  const candidate = mineTempoCandidates(history).find((c) => c.genreKey === genreKey)
+  if (candidate) return candidate.tempo
+  return TEMPO_PRESETS[Math.floor(Math.random() * TEMPO_PRESETS.length)]
+}
+
 /** 選択済みのジャンル/ムード/雰囲気に応じたテーマキーワードを、履歴の評価から相性の良い順に選ぶ */
-function pickThemeKeywords(history: HistoryEntry[], genreKey: string, moodKey: string | undefined, atmosphereKeys: string[]): string[] {
+function pickThemeKeywords(
+  history: HistoryEntry[],
+  genreKey: string,
+  moodKey: string | undefined,
+  atmosphereKeys: string[],
+  genreCategories?: KeywordSuggestionCategory[],
+): string[] {
   const keywordScores = scoreKeywordsFromHistory(history)
-  const groups = buildKeywordSuggestions({ genreKey, moodKey, atmosphereKeys }, keywordScores)
+  // プロダクション指示語(production_tags)は自動選択の対象外(呼び出し元が表示用にこの
+  // カテゴリを含めて渡してきても、実際に自動で選ばれる語からは常に除外する)
+  const eligibleCategories = genreCategories?.filter((c) => c !== 'production_tags')
+  const groups = buildKeywordSuggestions({ genreKey, moodKey, atmosphereKeys, genreCategories: eligibleCategories }, keywordScores)
   const allWords = groups.flatMap((g) => g.words)
   if (allWords.length > 0) {
     // 上位互換だけを毎回そのまま使うと同じ歌詞テーマが繰り返されるため、上位候補の中から
@@ -170,6 +195,13 @@ export interface SmartSelectOptions {
    */
   avoidGenreKey?: string
   avoidMoodKey?: string
+  /**
+   * テーマキーワード自動選択で対象とするキーワード候補のカテゴリ。呼び出し元のフォームが
+   * 実際に画面へ表示しているカテゴリと必ず揃えること(揃っていないと、自動選択で選ばれた語が
+   * どのチップにも一致せず、常に手入力欄行きになってしまう)。未指定時はkeywordSuggestionEngine
+   * の既定カテゴリを使う。
+   */
+  genreCategories?: KeywordSuggestionCategory[]
 }
 
 function candidateGenres(allowedGenreKeys?: string[]): OptionEntry[] {
@@ -214,8 +246,10 @@ export function pickSmartCompositionInput(
   const instrumentKeys = base?.instrumentKeys?.length
     ? base.instrumentKeys
     : pickKeysWeighted(templates.instrumentElements, scores.instrumentKeys, 3)
-  const tempo = base?.tempo
-  const themeKeywords = base?.themeKeywords?.length ? base.themeKeywords : pickThemeKeywords(history, genreKey, moodKey, atmosphereKeys)
+  const tempo = base?.tempo ?? pickFallbackTempo(history, genreKey)
+  const themeKeywords = base?.themeKeywords?.length
+    ? base.themeKeywords
+    : pickThemeKeywords(history, genreKey, moodKey, atmosphereKeys, options.genreCategories)
 
   const predictedRating = picked
     ? picked.averageRating
@@ -254,7 +288,9 @@ export function pickSmartLyricsInput(
   const atmosphereKeys = base?.atmosphereKeys?.length
     ? base.atmosphereKeys
     : pickKeysWeighted(templates.atmospheres, scores.atmosphereKeys, 2)
-  const themeKeywords = base?.themeKeywords?.length ? base.themeKeywords : pickThemeKeywords(history, genreKey, moodKey, atmosphereKeys)
+  const themeKeywords = base?.themeKeywords?.length
+    ? base.themeKeywords
+    : pickThemeKeywords(history, genreKey, moodKey, atmosphereKeys, options.genreCategories)
   const languageKey = base?.languageKey ?? 'ja'
 
   const predictedRating = picked

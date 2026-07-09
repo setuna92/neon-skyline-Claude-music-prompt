@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deriveLyricsInputFromComposition, pickSmartCompositionInput, pickSmartLyricsInput } from './smartSelect'
+import { buildKeywordSuggestions } from './keywordSuggestionEngine'
 import type { CompositionHistoryEntry, ClaudeCompositionHistoryEntry, LyricsPromptHistoryEntry } from './../types/persistence'
 
 afterEach(() => {
@@ -123,6 +124,26 @@ describe('pickSmartCompositionInput', () => {
     expect(result.predictedRating).toBeLessThanOrEqual(5)
   })
 
+  it('always picks a tempo, even cold-start with no favorite combo (never leaves it blank)', () => {
+    for (let i = 0; i < 10; i++) {
+      const result = pickSmartCompositionInput([])
+      expect(result.input.tempo).toBeGreaterThan(0)
+    }
+  })
+
+  it("prefers a genre's proven high-rated tempo over the generic presets when the combo path is skipped", () => {
+    const history = [
+      compositionEntry({ genreKey: 'jrock', moodKey: 'late_night_drive', tempo: 128 }, 5, '2026-01-01T00:00:00.000Z'),
+      compositionEntry({ genreKey: 'jrock', moodKey: 'late_night_drive', tempo: 128 }, 5, '2026-01-02T00:00:00.000Z'),
+    ]
+    // 探索(exploration)側の分岐に固定してお気に入り組み合わせを使わせず、
+    // allowedGenreKeysでジャンルもjrockに固定した上で、テンポのフォールバック経路だけを検証する
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    const result = pickSmartCompositionInput(history, { allowedGenreKeys: ['jrock'] })
+    expect(result.input.genreKey).toBe('jrock')
+    expect(result.input.tempo).toBe(128)
+  })
+
   it('ignores combinations rated below the favorite-combo threshold when picking cold-start category defaults', () => {
     const history = [compositionEntry({ moodKey: 'party' }, 2), compositionEntry({ moodKey: 'party' }, 2)]
     const result = pickSmartCompositionInput(history)
@@ -189,6 +210,24 @@ describe('pickSmartCompositionInput', () => {
     const result = pickSmartCompositionInput([autoEntry, autoEntry])
     // 自動生成タグ付きの履歴は「実績」として扱われないため、predictedRatingは既定値(3)近辺のまま
     expect(result.predictedRating).toBeLessThan(5)
+  })
+
+  it('never auto-selects a production_tags word as a theme keyword, even when that category is passed in for chip display', () => {
+    const genreKey = 'emo_electronic_rock_x_drumnbass' // 実際にキーワードバンクを持つジャンル
+    const productionWords = new Set(
+      buildKeywordSuggestions({ genreKey, genreCategories: ['production_tags'] }).flatMap((g) => g.words),
+    )
+    expect(productionWords.size).toBeGreaterThan(0) // テストの前提確認
+
+    for (let i = 0; i < 20; i++) {
+      const result = pickSmartCompositionInput([], {
+        allowedGenreKeys: [genreKey],
+        genreCategories: ['production_tags', 'imagery', 'adjectives', 'general'],
+      })
+      for (const word of result.input.themeKeywords ?? []) {
+        expect(productionWords.has(word)).toBe(false)
+      }
+    }
   })
 })
 
